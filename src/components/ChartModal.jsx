@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { StockChart } from './StockChart';
 import { ApiService } from '../services/ApiService';
 import { Theme } from '../models/Theme';
