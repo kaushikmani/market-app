@@ -626,24 +626,8 @@ if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
 }
 
-// ── 404 & global error handlers ───────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
-});
-
-app.use((err, req, res, _next) => {
-  console.error(`[ERROR] ${new Date().toISOString()} ${req.method} ${req.path}:`, err.message);
-  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
-});
-
-const server = app.listen(PORT, () => {
-  console.log(`Stock Analyzer server running on http://localhost:${PORT}`);
-  startBackgroundRefresh();
-});
-
-// Watchlist prices — 60-second cache (live during market hours)
+// ── Watchlist prices ──────────────────────────────────────────────────────────
 let watchlistPricesCache = { data: null, expiry: 0 };
-// All default tickers extracted from themePerformance THEMES list
 const ALL_WATCHLIST_TICKERS = [
   'SPY','QQQ','IWM','DIA','GLD','SLV','XLK','XLC','XLV','IGV','ARKG','NAIL','EWY','EWZ','ILF',
   'NVDA','TSLA','AAPL','MSFT','GOOGL','AMZN','META',
@@ -692,4 +676,19 @@ app.get('/api/watchlist-prices', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// ── 404 & global error handlers ───────────────────────────────────────────────
+app.use((req, res) => {
+  res.status(404).json({ error: `Route ${req.method} ${req.path} not found` });
+});
+
+app.use((err, req, res, _next) => {
+  console.error(`[ERROR] ${new Date().toISOString()} ${req.method} ${req.path}:`, err.message);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
+});
+
+const server = app.listen(PORT, () => {
+  console.log(`Stock Analyzer server running on http://localhost:${PORT}`);
+  startBackgroundRefresh();
 });
