@@ -1,0 +1,1273 @@
+import React, { useState, useRef, useMemo, useCallback } from 'react';
+import { Theme } from '../models/Theme';
+import { useNotes } from '../hooks/useNotes';
+import { ApiService } from '../services/ApiService';
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+
+function formatDayNum(dateStr) {
+  return new Date(dateStr + 'T12:00:00').getDate();
+}
+
+function formatWeekday(dateStr) {
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+}
+
+function formatTime(isoStr) {
+  if (!isoStr) return '';
+  return new Date(isoStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+
+const TYPE_STYLES = {
+  audio: { bg: Theme.colors.accentPurpleDim, color: Theme.colors.accentPurple, label: 'Audio' },
+  text: { bg: Theme.colors.accentBlueDim, color: Theme.colors.accentBlue, label: 'Text' },
+  image: { bg: 'rgba(52, 211, 153, 0.10)', color: '#34d399', label: 'Image' },
+};
+
+const TypeBadge = ({ type }) => {
+  const s = TYPE_STYLES[type] || TYPE_STYLES.text;
+  return (
+    <span style={{
+      fontSize: '9px',
+      fontWeight: 700,
+      padding: '2px 8px',
+      borderRadius: Theme.radius.xs,
+      background: s.bg,
+      color: s.color,
+      letterSpacing: '0.05em',
+      textTransform: 'uppercase',
+    }}>
+      {s.label}
+    </span>
+  );
+};
+
+const TickerPill = ({ ticker, onClick }) => (
+  <span
+    onClick={() => onClick(ticker)}
+    style={{
+      fontSize: '10px',
+      fontWeight: 700,
+      padding: '2px 8px',
+      borderRadius: Theme.radius.full,
+      background: Theme.colors.accentBlueDim,
+      color: Theme.colors.accentBlue,
+      cursor: 'pointer',
+      transition: 'all 0.15s ease',
+      border: `1px solid ${Theme.colors.accentBlueBorder}`,
+    }}
+    onMouseEnter={e => {
+      e.currentTarget.style.background = Theme.colors.accentBlue;
+      e.currentTarget.style.color = '#fff';
+    }}
+    onMouseLeave={e => {
+      e.currentTarget.style.background = Theme.colors.accentBlueDim;
+      e.currentTarget.style.color = Theme.colors.accentBlue;
+    }}
+  >
+    ${ticker}
+  </span>
+);
+
+const TagPill = ({ tag }) => (
+  <span style={{
+    fontSize: '9px',
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: Theme.radius.full,
+    background: 'rgba(255,255,255,0.04)',
+    color: Theme.colors.secondaryText,
+    border: `1px solid ${Theme.colors.cardBorder}`,
+  }}>
+    {tag}
+  </span>
+);
+
+const NoteCard = ({ note, onTickerClick, onDelete, onUpdate }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editedSummary, setEditedSummary] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const hasSummary = note.summary && note.summary.length > 0;
+  const isLong = note.content && note.content.length > 300;
+
+  const startEditing = () => {
+    setEditedSummary([...note.summary]);
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setEditedSummary([]);
+  };
+
+  const handleSave = async () => {
+    const cleaned = editedSummary.filter(p => p.trim().length > 0);
+    if (cleaned.length === 0) return;
+    try {
+      setSaving(true);
+      await onUpdate(note.id, { summary: cleaned });
+      setEditing(false);
+    } catch (err) {
+      alert('Failed to save: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updatePoint = (idx, value) => {
+    setEditedSummary(prev => prev.map((p, i) => i === idx ? value : p));
+  };
+
+  const removePoint = (idx) => {
+    setEditedSummary(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const addPoint = () => {
+    setEditedSummary(prev => [...prev, '']);
+  };
+
+  return (
+    <div className="card" style={{ padding: '16px', position: 'relative' }}>
+      <div className="flex items-center gap-2" style={{ marginBottom: '10px', flexWrap: 'wrap' }}>
+        <TypeBadge type={note.type} />
+        <span style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText, flex: 1 }}>
+          {note.title}
+        </span>
+        <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+          {formatTime(note.createdAt)}
+        </span>
+        <span
+          onClick={() => onDelete(note.id)}
+          style={{
+            fontSize: '10px',
+            color: Theme.colors.tertiaryText,
+            cursor: 'pointer',
+            padding: '2px 6px',
+            borderRadius: Theme.radius.xs,
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = Theme.colors.bearishRed;
+            e.currentTarget.style.background = Theme.colors.bearishRedBg;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = Theme.colors.tertiaryText;
+            e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          Delete
+        </span>
+      </div>
+
+      {/* Summary bullet points */}
+      {hasSummary && (
+        <div style={{ marginBottom: note.content ? '8px' : 0 }}>
+          <div className="flex items-center gap-2" style={{ marginBottom: '6px' }}>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              color: Theme.colors.tertiaryText,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}>
+              Key Points
+            </span>
+            {!editing && (
+              <span
+                onClick={startEditing}
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: Theme.colors.tertiaryText,
+                  cursor: 'pointer',
+                  padding: '1px 6px',
+                  borderRadius: Theme.radius.xs,
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.color = Theme.colors.accentBlue;
+                  e.currentTarget.style.background = Theme.colors.accentBlueDim;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.color = Theme.colors.tertiaryText;
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                Edit
+              </span>
+            )}
+          </div>
+
+          {editing ? (
+            <div>
+              {editedSummary.map((point, i) => (
+                <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px', alignItems: 'flex-start' }}>
+                  <span style={{ color: Theme.colors.accentBlue, flexShrink: 0, fontWeight: 700, fontSize: '12px', lineHeight: '32px' }}>•</span>
+                  <textarea
+                    value={point}
+                    onChange={e => updatePoint(i, e.target.value)}
+                    rows={1}
+                    style={{
+                      flex: 1,
+                      background: Theme.colors.inputBackground,
+                      border: `1px solid ${Theme.colors.cardBorder}`,
+                      borderRadius: Theme.radius.xs,
+                      color: Theme.colors.primaryText,
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      fontFamily: 'inherit',
+                      outline: 'none',
+                      lineHeight: '1.6',
+                      resize: 'vertical',
+                      minHeight: '32px',
+                      transition: 'border-color 0.15s ease',
+                    }}
+                    onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
+                    onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
+                  />
+                  <span
+                    onClick={() => removePoint(i)}
+                    style={{
+                      fontSize: '14px',
+                      color: Theme.colors.tertiaryText,
+                      cursor: 'pointer',
+                      padding: '4px 4px',
+                      lineHeight: '24px',
+                      flexShrink: 0,
+                      transition: 'color 0.15s ease',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = Theme.colors.bearishRed}
+                    onMouseLeave={e => e.currentTarget.style.color = Theme.colors.tertiaryText}
+                  >
+                    x
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-center gap-2" style={{ marginTop: '8px' }}>
+                <span
+                  onClick={addPoint}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: Theme.colors.accentBlue,
+                    cursor: 'pointer',
+                    padding: '3px 10px',
+                    borderRadius: Theme.radius.xs,
+                    border: `1px dashed ${Theme.colors.accentBlueBorder}`,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  + Add point
+                </span>
+                <div style={{ flex: 1 }} />
+                <span
+                  onClick={cancelEditing}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: Theme.colors.tertiaryText,
+                    cursor: 'pointer',
+                    padding: '4px 12px',
+                    borderRadius: Theme.radius.xs,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Cancel
+                </span>
+                <span
+                  onClick={handleSave}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    color: '#fff',
+                    cursor: saving ? 'default' : 'pointer',
+                    padding: '4px 14px',
+                    borderRadius: Theme.radius.xs,
+                    background: saving ? Theme.colors.tertiaryText : Theme.colors.accentBlue,
+                    opacity: saving ? 0.6 : 1,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {note.summary.map((point, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  gap: '8px',
+                  marginBottom: '5px',
+                  fontSize: '12px',
+                  color: Theme.colors.secondaryText,
+                  lineHeight: 1.6,
+                }}>
+                  <span style={{ color: Theme.colors.accentBlue, flexShrink: 0, fontWeight: 700 }}>•</span>
+                  <span>{point}</span>
+                </div>
+              ))}
+            </>
+          )}
+          {note.content && !editing && (
+            <span
+              onClick={() => setShowTranscript(!showTranscript)}
+              style={{
+                fontSize: '10px',
+                fontWeight: 600,
+                color: Theme.colors.tertiaryText,
+                cursor: 'pointer',
+                marginTop: '6px',
+                display: 'inline-block',
+              }}
+            >
+              {showTranscript ? 'Hide original' : 'Show original'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Full content / transcript */}
+      {(!hasSummary || showTranscript) && note.content && (
+        <>
+          <div style={{
+            fontSize: '12px',
+            lineHeight: '1.7',
+            color: Theme.colors.secondaryText,
+            whiteSpace: 'pre-wrap',
+            maxHeight: expanded || !isLong ? 'none' : '120px',
+            overflow: 'hidden',
+            position: 'relative',
+            ...(hasSummary ? {
+              marginTop: '8px',
+              paddingTop: '8px',
+              borderTop: `1px solid ${Theme.colors.borderSubtle}`,
+            } : {}),
+          }}>
+            {note.content}
+            {isLong && !expanded && (
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: '40px',
+                background: `linear-gradient(transparent, ${Theme.colors.cardBackground})`,
+              }} />
+            )}
+          </div>
+          {isLong && (
+            <span
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: Theme.colors.accentBlue,
+                cursor: 'pointer',
+                marginTop: '6px',
+                display: 'inline-block',
+              }}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </span>
+          )}
+        </>
+      )}
+
+      {/* Images */}
+      {note.images && note.images.length > 0 && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: note.images.length === 1 ? '1fr' : 'repeat(2, 1fr)',
+          gap: '8px',
+          marginTop: '12px',
+        }}>
+          {note.images.map((img, i) => (
+            <a
+              key={i}
+              href={`/api/uploads/${img}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+            >
+              <img
+                src={`/api/uploads/${img}`}
+                alt={`Note image ${i + 1}`}
+                style={{
+                  width: '100%',
+                  borderRadius: Theme.radius.sm,
+                  border: `1px solid ${Theme.colors.cardBorder}`,
+                  cursor: 'pointer',
+                  display: 'block',
+                }}
+              />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {((note.tickers && note.tickers.length > 0) || (note.tags && note.tags.length > 0)) && (
+        <div className="flex items-center gap-1" style={{ marginTop: '12px', flexWrap: 'wrap' }}>
+          {note.tickers?.map(t => (
+            <TickerPill key={t} ticker={t} onClick={onTickerClick} />
+          ))}
+          {note.tags?.map(t => (
+            <TagPill key={t} tag={t} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const BRIEF_SECTIONS = [
+  { key: 'Active Setups', icon: '▶', color: Theme.colors.bullishGreen },
+  { key: 'Key Levels', icon: '◎', color: Theme.colors.accentBlue },
+  { key: 'Catalysts', icon: '⚡', color: Theme.colors.accentAmber },
+  { key: 'Market Bias', icon: '◈', color: Theme.colors.accentPurple },
+];
+
+const BriefSection = ({ brief, briefLoading, onTickerClick }) => {
+  if (briefLoading) {
+    return (
+      <div className="card" style={{ padding: '16px', borderLeft: `3px solid ${Theme.colors.accentBlue}` }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText, marginBottom: '8px' }}>
+          Trading Brief
+        </div>
+        <div style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>
+          Generating consolidated brief...
+        </div>
+      </div>
+    );
+  }
+
+  if (!brief) return null;
+
+  // Extract ticker mentions from text for clickable highlighting
+  const renderLine = (line) => {
+    const parts = line.split(/(\b[A-Z]{2,5}\b)/g);
+    return parts.map((part, i) => {
+      // Check if this looks like a ticker (all caps, 2-5 chars, common ticker patterns)
+      if (/^[A-Z]{2,5}$/.test(part) && !/^(THE|AND|FOR|WITH|FROM|ALSO|NEAR|HOLD|STOP|LONG|SHORT|BUY|SELL|NOT|BUT|ALL|MAY|NOW|ABOVE|BELOW|INTO|BACK|THAN|WILL|THIS|BEEN|ONLY|OVER)$/.test(part)) {
+        return (
+          <span
+            key={i}
+            onClick={() => onTickerClick(part)}
+            style={{
+              fontWeight: 700,
+              color: Theme.colors.accentBlue,
+              cursor: 'pointer',
+              borderBottom: `1px dotted ${Theme.colors.accentBlueBorder}`,
+            }}
+          >
+            {part}
+          </span>
+        );
+      }
+      return part;
+    });
+  };
+
+  return (
+    <div className="card" style={{ padding: '16px', borderLeft: `3px solid ${Theme.colors.accentBlue}` }}>
+      <div style={{ marginBottom: '14px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText, marginBottom: '2px' }}>
+          Trading Brief
+        </div>
+        <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+          Consolidated from last 4 days of notes
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {BRIEF_SECTIONS.map(({ key, icon, color }) => {
+          const items = brief[key];
+          if (!items || items.length === 0) return null;
+          return (
+            <div key={key}>
+              <div className="flex items-center gap-1" style={{ marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', color }}>{icon}</span>
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}>
+                  {key}
+                </span>
+              </div>
+              <div style={{
+                padding: '8px 12px',
+                background: Theme.colors.surfaceSubtle,
+                borderRadius: Theme.radius.sm,
+                border: `1px solid ${Theme.colors.borderSubtle}`,
+              }}>
+                {items.map((item, i) => (
+                  <div key={i} style={{
+                    fontSize: '11px',
+                    color: Theme.colors.secondaryText,
+                    lineHeight: 1.6,
+                    marginBottom: i < items.length - 1 ? '4px' : 0,
+                    display: 'flex',
+                    gap: '6px',
+                  }}>
+                    <span style={{ color, flexShrink: 0, fontWeight: 700, fontSize: '10px', marginTop: '2px' }}>•</span>
+                    <span>{renderLine(item)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ── Notes Q&A ─────────────────────────────────────────────────────────────────
+const NotesChat = () => {
+  const [question, setQuestion] = useState('');
+  const [history, setHistory] = useState([]); // [{question, answer}]
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
+
+  const ask = useCallback(async () => {
+    const q = question.trim();
+    if (!q || loading) return;
+    setQuestion('');
+    setLoading(true);
+    try {
+      const { answer } = await ApiService.askNotes(q);
+      setHistory(prev => [...prev, { question: q, answer }]);
+    } catch (e) {
+      setHistory(prev => [...prev, { question: q, answer: `Error: ${e.message}` }]);
+    } finally {
+      setLoading(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [question, loading]);
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+  };
+
+  return (
+    <div className="card" style={{ padding: '16px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.tertiaryText, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
+        Ask your notes
+      </div>
+
+      {/* History */}
+      {history.length > 0 && (
+        <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {history.map((h, i) => (
+            <div key={i}>
+              {/* Question bubble */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
+                <div style={{
+                  background: Theme.colors.accentBlue,
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  padding: '7px 12px',
+                  borderRadius: '12px 12px 2px 12px',
+                  maxWidth: '85%',
+                  lineHeight: 1.5,
+                }}>
+                  {h.question}
+                </div>
+              </div>
+              {/* Answer bubble */}
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div style={{
+                  background: Theme.colors.cardBackground,
+                  border: `1px solid ${Theme.colors.cardBorder}`,
+                  color: Theme.colors.secondaryText,
+                  fontSize: '12px',
+                  padding: '8px 12px',
+                  borderRadius: '2px 12px 12px 12px',
+                  maxWidth: '90%',
+                  lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  {h.answer}
+                </div>
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+              <div style={{
+                background: Theme.colors.cardBackground,
+                border: `1px solid ${Theme.colors.cardBorder}`,
+                padding: '8px 14px',
+                borderRadius: '2px 12px 12px 12px',
+              }}>
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{
+                      width: '5px', height: '5px', borderRadius: '50%',
+                      background: Theme.colors.tertiaryText,
+                      animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+                    }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Input */}
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+        <textarea
+          ref={inputRef}
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="What was my NVDA thesis? Which setups repeated this week?..."
+          rows={2}
+          style={{
+            flex: 1,
+            background: Theme.colors.inputBackground,
+            border: `1px solid ${Theme.colors.cardBorder}`,
+            borderRadius: Theme.radius.sm,
+            color: Theme.colors.primaryText,
+            padding: '8px 12px',
+            fontSize: '12px',
+            fontFamily: 'inherit',
+            outline: 'none',
+            resize: 'none',
+            lineHeight: 1.5,
+            transition: 'border-color 0.15s ease',
+          }}
+          onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
+          onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
+        />
+        <button
+          onClick={ask}
+          disabled={!question.trim() || loading}
+          style={{
+            background: question.trim() && !loading ? Theme.colors.accentBlue : Theme.colors.cardBorder,
+            border: 'none',
+            borderRadius: Theme.radius.sm,
+            color: '#fff',
+            padding: '8px 14px',
+            fontSize: '12px',
+            fontWeight: 700,
+            cursor: question.trim() && !loading ? 'pointer' : 'default',
+            fontFamily: 'inherit',
+            transition: 'all 0.15s ease',
+            whiteSpace: 'nowrap',
+            height: '100%',
+          }}
+        >
+          Ask
+        </button>
+      </div>
+      {history.length > 0 && (
+        <span
+          onClick={() => setHistory([])}
+          style={{ fontSize: '10px', color: Theme.colors.tertiaryText, cursor: 'pointer', marginTop: '6px', display: 'inline-block' }}
+        >
+          Clear
+        </span>
+      )}
+    </div>
+  );
+};
+
+const AddNoteForm = ({ onSubmit, uploading, onUpload, onUploadImages }) => {
+  const [mode, setMode] = useState('text');
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [tags, setTags] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+  const [imagePreview, setImagePreview] = useState([]);
+  const fileRef = useRef(null);
+  const imageRef = useRef(null);
+
+  const handleTextSubmit = (e) => {
+    e.preventDefault();
+    if (!content.trim()) return;
+    onSubmit({
+      title: title.trim() || undefined,
+      content: content.trim(),
+      tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+    });
+    setTitle('');
+    setContent('');
+    setTags('');
+  };
+
+  const handleFile = (file) => {
+    if (!file) return;
+    onUpload(file, title.trim() || undefined);
+    setTitle('');
+  };
+
+  const handleImageFiles = (files) => {
+    if (!files || files.length === 0) return;
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    // Show previews
+    const previews = imageFiles.map(f => ({ file: f, url: URL.createObjectURL(f) }));
+    setImagePreview(prev => [...prev, ...previews]);
+  };
+
+  const handleImageSubmit = () => {
+    if (imagePreview.length === 0) return;
+    const files = imagePreview.map(p => p.file);
+    onUploadImages(files, title.trim() || undefined, content.trim() || undefined);
+    setTitle('');
+    setContent('');
+    setImagePreview([]);
+  };
+
+  const removeImage = (idx) => {
+    setImagePreview(prev => {
+      URL.revokeObjectURL(prev[idx].url);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (mode === 'image') {
+      handleImageFiles(e.dataTransfer.files);
+    } else {
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    }
+  };
+
+  const inputStyle = {
+    background: Theme.colors.inputBackground,
+    border: `1px solid ${Theme.colors.cardBorder}`,
+    borderRadius: Theme.radius.sm,
+    color: Theme.colors.primaryText,
+    padding: '10px 12px',
+    fontSize: '12px',
+    fontFamily: 'inherit',
+    outline: 'none',
+    width: '100%',
+    transition: 'border-color 0.15s ease',
+  };
+
+  return (
+    <div className="card" style={{ padding: '16px' }}>
+      {/* Mode toggle */}
+      <div className="flex items-center gap-1" style={{ marginBottom: '14px' }}>
+        {[['text', 'Text Note'], ['image', 'Image'], ['audio', 'Audio']].map(([m, label]) => (
+          <span
+            key={m}
+            onClick={() => setMode(m)}
+            style={{
+              fontSize: '11px',
+              fontWeight: mode === m ? 700 : 500,
+              padding: '5px 14px',
+              borderRadius: Theme.radius.sm,
+              background: mode === m ? Theme.colors.accentBlue : 'transparent',
+              color: mode === m ? '#fff' : Theme.colors.secondaryText,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {/* Title (shared) */}
+      <input
+        type="text"
+        placeholder="Title (optional)"
+        value={title}
+        onChange={e => setTitle(e.target.value)}
+        style={{ ...inputStyle, marginBottom: '10px' }}
+        onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
+        onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
+      />
+
+      {mode === 'text' && (
+        <form onSubmit={handleTextSubmit}>
+          <textarea
+            placeholder="Write your trading notes... Mention tickers like $NVDA or AAPL and they'll be auto-extracted."
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            rows={4}
+            style={{
+              ...inputStyle,
+              resize: 'vertical',
+              minHeight: '80px',
+              lineHeight: '1.6',
+            }}
+            onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
+            onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
+          />
+          <input
+            type="text"
+            placeholder="Tags (comma separated)"
+            value={tags}
+            onChange={e => setTags(e.target.value)}
+            style={{ ...inputStyle, marginTop: '10px' }}
+            onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
+            onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
+          />
+          <button
+            type="submit"
+            disabled={!content.trim()}
+            style={{
+              marginTop: '12px',
+              background: content.trim() ? Theme.colors.accentBlue : Theme.colors.tertiaryText,
+              border: 'none',
+              borderRadius: Theme.radius.sm,
+              color: '#fff',
+              padding: '9px 20px',
+              fontSize: '11px',
+              fontWeight: 700,
+              cursor: content.trim() ? 'pointer' : 'default',
+              fontFamily: 'inherit',
+              letterSpacing: '0.04em',
+              textTransform: 'uppercase',
+              opacity: content.trim() ? 1 : 0.5,
+              transition: 'all 0.15s ease',
+            }}
+          >
+            Save Note
+          </button>
+        </form>
+      )}
+
+      {mode === 'image' && (
+        <div>
+          {/* Drop zone */}
+          <div
+            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => imageRef.current?.click()}
+            style={{
+              border: `2px dashed ${dragOver ? '#34d399' : Theme.colors.cardBorder}`,
+              borderRadius: Theme.radius.md,
+              padding: imagePreview.length > 0 ? '16px' : '32px 20px',
+              textAlign: 'center',
+              cursor: 'pointer',
+              background: dragOver ? 'rgba(52, 211, 153, 0.06)' : 'transparent',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <input
+              ref={imageRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: 'none' }}
+              onChange={e => handleImageFiles(e.target.files)}
+            />
+            {imagePreview.length > 0 ? (
+              <div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                  gap: '8px',
+                  marginBottom: '10px',
+                }}>
+                  {imagePreview.map((p, i) => (
+                    <div key={i} style={{ position: 'relative' }}>
+                      <img
+                        src={p.url}
+                        alt={`Preview ${i + 1}`}
+                        style={{
+                          width: '100%',
+                          borderRadius: Theme.radius.sm,
+                          border: `1px solid ${Theme.colors.cardBorder}`,
+                          display: 'block',
+                        }}
+                      />
+                      <span
+                        onClick={(e) => { e.stopPropagation(); removeImage(i); }}
+                        style={{
+                          position: 'absolute',
+                          top: '4px',
+                          right: '4px',
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.7)',
+                          color: '#fff',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        x
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+                  Click to add more images
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <span style={{ fontSize: '20px' }}>&#128247;</span>
+                <span style={{ fontSize: '12px', color: Theme.colors.secondaryText, fontWeight: 600 }}>
+                  Drop images or click to upload
+                </span>
+                <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+                  PNG, JPG, GIF — multiple allowed
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Caption / note text for images */}
+          {imagePreview.length > 0 && (
+            <div>
+              <textarea
+                placeholder="Add a caption or notes (optional)... Mention tickers like $NVDA"
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                rows={2}
+                style={{
+                  ...inputStyle,
+                  resize: 'vertical',
+                  minHeight: '50px',
+                  lineHeight: '1.6',
+                  marginTop: '10px',
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
+                onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
+              />
+              <button
+                onClick={handleImageSubmit}
+                disabled={uploading}
+                style={{
+                  marginTop: '12px',
+                  background: uploading ? Theme.colors.tertiaryText : '#34d399',
+                  border: 'none',
+                  borderRadius: Theme.radius.sm,
+                  color: '#fff',
+                  padding: '9px 20px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  cursor: uploading ? 'default' : 'pointer',
+                  fontFamily: 'inherit',
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  opacity: uploading ? 0.5 : 1,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {uploading ? 'Uploading...' : `Upload ${imagePreview.length} Image${imagePreview.length > 1 ? 's' : ''}`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {mode === 'audio' && (
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={handleDrop}
+          onClick={() => fileRef.current?.click()}
+          style={{
+            border: `2px dashed ${dragOver ? Theme.colors.accentBlue : Theme.colors.cardBorder}`,
+            borderRadius: Theme.radius.md,
+            padding: '32px 20px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: dragOver ? Theme.colors.accentBlueDim : 'transparent',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <input
+            ref={fileRef}
+            type="file"
+            accept="audio/*"
+            style={{ display: 'none' }}
+            onChange={e => handleFile(e.target.files[0])}
+          />
+          {uploading ? (
+            <div className="flex flex-col items-center gap-2">
+              <div style={{
+                width: '20px',
+                height: '20px',
+                border: `2px solid ${Theme.colors.cardBorder}`,
+                borderTop: `2px solid ${Theme.colors.accentBlue}`,
+                borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+              <span style={{ fontSize: '12px', color: Theme.colors.accentBlue, fontWeight: 600 }}>
+                Transcribing audio...
+              </span>
+              <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+                This may take a few minutes
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <span style={{ fontSize: '20px' }}>&#127908;</span>
+              <span style={{ fontSize: '12px', color: Theme.colors.secondaryText, fontWeight: 600 }}>
+                Drop audio file or click to upload
+              </span>
+              <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+                Supports m4a, mp3, wav, webm
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Day tabs sidebar (right side)
+const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
+  if (notesByDate.length === 0) return null;
+
+  return (
+    <div style={{
+      position: 'sticky',
+      top: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4px',
+      minWidth: '56px',
+    }}>
+      {/* "All" tab */}
+      <div
+        onClick={() => onSelectDate(null)}
+        style={{
+          padding: '8px 6px',
+          borderRadius: Theme.radius.sm,
+          background: selectedDate === null ? Theme.colors.accentBlue : 'transparent',
+          color: selectedDate === null ? '#fff' : Theme.colors.secondaryText,
+          fontSize: '10px',
+          fontWeight: selectedDate === null ? 700 : 500,
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.15s ease',
+          border: `1px solid ${selectedDate === null ? Theme.colors.accentBlue : Theme.colors.cardBorder}`,
+          letterSpacing: '0.03em',
+        }}
+      >
+        All
+      </div>
+
+      {notesByDate.map(({ date }) => {
+        const isActive = selectedDate === date;
+        const isWeekend = [0, 6].includes(new Date(date + 'T12:00:00').getDay());
+        return (
+          <div
+            key={date}
+            onClick={() => onSelectDate(date)}
+            style={{
+              padding: '6px 6px',
+              borderRadius: Theme.radius.sm,
+              background: isActive ? Theme.colors.accentBlue : 'transparent',
+              color: isActive ? '#fff' : isWeekend ? Theme.colors.tertiaryText : Theme.colors.secondaryText,
+              textAlign: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              border: `1px solid ${isActive ? Theme.colors.accentBlue : Theme.colors.cardBorder}`,
+            }}
+          >
+            <div style={{ fontSize: '14px', fontWeight: 800, lineHeight: '1.2' }}>
+              {formatDayNum(date)}
+            </div>
+            <div style={{ fontSize: '9px', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {formatWeekday(date)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export const TradingNotesSection = ({ onTickerClick }) => {
+  const {
+    notesByDate,
+    loading,
+    error,
+    uploading,
+    brief,
+    briefLoading,
+    createNote,
+    updateNote,
+    uploadAudio,
+    uploadImages,
+    deleteNote,
+  } = useNotes(5);
+
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const filteredNotesByDate = useMemo(() => {
+    if (selectedDate === null) return notesByDate;
+    return notesByDate.filter(({ date }) => date === selectedDate);
+  }, [notesByDate, selectedDate]);
+
+  const handleCreate = async (data) => {
+    try {
+      await createNote(data);
+    } catch (err) {
+      alert('Failed to save note: ' + err.message);
+    }
+  };
+
+  const handleUpload = async (file, title) => {
+    try {
+      await uploadAudio(file, title);
+    } catch (err) {
+      alert('Failed to transcribe: ' + err.message);
+    }
+  };
+
+  const handleUploadImages = async (files, title, content) => {
+    try {
+      await uploadImages(files, title, content);
+    } catch (err) {
+      alert('Failed to upload images: ' + err.message);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      setDeleteError(null);
+      await deleteNote(id);
+    } catch (err) {
+      setDeleteError(err.message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="card" style={{ padding: '20px' }}>
+            <div className="skeleton" style={{ width: '40%', height: '12px', marginBottom: '12px' }} />
+            <div className="skeleton" style={{ width: '90%', height: '10px', marginBottom: '8px' }} />
+            <div className="skeleton" style={{ width: '60%', height: '10px' }} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Header */}
+      <div>
+        <div style={{
+          fontSize: '18px',
+          fontWeight: 800,
+          color: Theme.colors.primaryText,
+          letterSpacing: '-0.02em',
+          marginBottom: '4px',
+        }}>
+          Trading Notes
+        </div>
+        <span style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>
+          Inner Circle journal — last 5 days
+        </span>
+      </div>
+
+      {error && (
+        <div className="card" style={{
+          padding: '12px 16px',
+          background: Theme.colors.bearishRedBg,
+          borderColor: Theme.colors.bearishRedBorder,
+        }}>
+          <span style={{ fontSize: '12px', color: Theme.colors.bearishRed }}>{error}</span>
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="card" style={{
+          padding: '12px 16px',
+          background: Theme.colors.bearishRedBg,
+          borderColor: Theme.colors.bearishRedBorder,
+        }}>
+          <span style={{ fontSize: '12px', color: Theme.colors.bearishRed }}>Delete failed: {deleteError}</span>
+        </div>
+      )}
+
+      {/* Summary from last 3-4 market days */}
+      <BriefSection brief={brief} briefLoading={briefLoading} onTickerClick={onTickerClick} />
+
+      {/* Ask your notes */}
+      <NotesChat />
+
+      {/* Add note form */}
+      <AddNoteForm onSubmit={handleCreate} uploading={uploading} onUpload={handleUpload} onUploadImages={handleUploadImages} />
+
+      {/* Day tabs + Notes timeline */}
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+        {/* Day sidebar */}
+        <DaySidebar
+          notesByDate={notesByDate}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+        />
+
+        {/* Notes content */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {filteredNotesByDate.length === 0 ? (
+            <div className="card flex items-center justify-center" style={{ height: '100px' }}>
+              <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>
+                {notesByDate.length === 0 ? 'No notes yet. Add your first note above.' : 'No notes for this day.'}
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {filteredNotesByDate.map(({ date, notes }) => (
+                <div key={date}>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: Theme.colors.tertiaryText,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    padding: '8px 0 6px',
+                    borderBottom: `1px solid ${Theme.colors.borderSubtle}`,
+                    marginBottom: '10px',
+                  }}>
+                    {formatDate(date)}
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {notes.map(note => (
+                      <NoteCard
+                        key={note.id}
+                        note={note}
+                        onTickerClick={onTickerClick}
+                        onDelete={handleDelete}
+                        onUpdate={updateNote}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

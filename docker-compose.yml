@@ -1,0 +1,13 @@
+services:
+  market-app:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    volumes:
+      # Persist alerts, notes, and page-cache across container restarts
+      - ./server/data:/app/server/data
+    restart: unless-stopped

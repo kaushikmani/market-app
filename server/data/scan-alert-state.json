@@ -1,0 +1,526 @@
+{
+  "VZ": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773078328794
+  },
+  "FI": {
+    "setupType": "rsi_oversold",
+    "alertedAt": 1773235821969
+  },
+  "RKLB": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773238966343
+  },
+  "APP": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773237346492
+  },
+  "OPEN": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "MVIS": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "ABBV": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773164345961
+  },
+  "HUBS": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773149581318
+  },
+  "RTX": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "CRM": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "MSTR": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "DRS": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "PDYN": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "TIGR": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "UNH": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773149581318
+  },
+  "NVO": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "AMGN": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "IBM": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773064988038
+  },
+  "AMZN": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773149581318
+  },
+  "FTNT": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "DELL": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773064988038
+  },
+  "CEG": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773149581318
+  },
+  "LLY": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773149581318
+  },
+  "ABNB": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773149581318
+  },
+  "EXPE": {
+    "setupType": "inside_day",
+    "alertedAt": 1773063373162
+  },
+  "SPOT": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "PLTR": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "AXON": {
+    "setupType": "inside_day",
+    "alertedAt": 1773064988038
+  },
+  "KTOS": {
+    "setupType": "inside_day",
+    "alertedAt": 1773235821969
+  },
+  "KRMN": {
+    "setupType": "inside_day",
+    "alertedAt": 1773080059123
+  },
+  "DAVE": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "MP": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "GLD": {
+    "setupType": "inside_day",
+    "alertedAt": 1773064988038
+  },
+  "TRV": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "GD": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773151819923
+  },
+  "MA": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236910237
+  },
+  "GME": {
+    "setupType": "inside_day",
+    "alertedAt": 1773064988038
+  },
+  "INDI": {
+    "setupType": "inside_day",
+    "alertedAt": 1773235821969
+  },
+  "RDW": {
+    "setupType": "inside_day",
+    "alertedAt": 1773080059123
+  },
+  "JD": {
+    "setupType": "inside_day",
+    "alertedAt": 1773064988038
+  },
+  "DVN": {
+    "setupType": "inside_day",
+    "alertedAt": 1773064988038
+  },
+  "OXY": {
+    "setupType": "inside_day",
+    "alertedAt": 1773064988038
+  },
+  "AMPX": {
+    "setupType": "inside_day",
+    "alertedAt": 1773064988038
+  },
+  "IGV": {
+    "setupType": "inside_day",
+    "alertedAt": 1773065000767
+  },
+  "EWZ": {
+    "setupType": "inside_day",
+    "alertedAt": 1773240612548
+  },
+  "MARA": {
+    "setupType": "inside_day",
+    "alertedAt": 1773065987097
+  },
+  "CVX": {
+    "setupType": "inside_day",
+    "alertedAt": 1773080895912
+  },
+  "MSFT": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "OKTA": {
+    "setupType": "inside_day",
+    "alertedAt": 1773080895912
+  },
+  "ASPI": {
+    "setupType": "inside_day",
+    "alertedAt": 1773066349342
+  },
+  "SNOW": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773151819923
+  },
+  "LMT": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773172736963
+  },
+  "MSOS": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773166895337
+  },
+  "MRK": {
+    "setupType": "inside_day",
+    "alertedAt": 1773068922751
+  },
+  "MRCY": {
+    "setupType": "inside_day",
+    "alertedAt": 1773083510762
+  },
+  "WMT": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "TE": {
+    "setupType": "inside_day",
+    "alertedAt": 1773069806242
+  },
+  "NVDA": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236910237
+  },
+  "RVMD": {
+    "setupType": "inside_day",
+    "alertedAt": 1773149581318
+  },
+  "XLV": {
+    "setupType": "inside_day",
+    "alertedAt": 1773172736963
+  },
+  "EWY": {
+    "setupType": "inside_day",
+    "alertedAt": 1773070680453
+  },
+  "MRVL": {
+    "setupType": "inside_day",
+    "alertedAt": 1773149581318
+  },
+  "LITE": {
+    "setupType": "inside_day",
+    "alertedAt": 1773149581318
+  },
+  "AMD": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773073034496
+  },
+  "BWXT": {
+    "setupType": "inside_day",
+    "alertedAt": 1773074775341
+  },
+  "GOOGL": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773158462868
+  },
+  "V": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773171055017
+  },
+  "RBRK": {
+    "setupType": "inside_day",
+    "alertedAt": 1773151823218
+  },
+  "BA": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773151819923
+  },
+  "PL": {
+    "setupType": "inside_day",
+    "alertedAt": 1773149581318
+  },
+  "LMND": {
+    "setupType": "inside_day",
+    "alertedAt": 1773078328794
+  },
+  "BKNG": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773236027123
+  },
+  "TSLA": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773235821969
+  },
+  "GTBIF": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773235821969
+  },
+  "META": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "GEV": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236910237
+  },
+  "U": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236850544
+  },
+  "CRDO": {
+    "setupType": "inside_day",
+    "alertedAt": 1773166895337
+  },
+  "ASTS": {
+    "setupType": "inside_day",
+    "alertedAt": 1773151819923
+  },
+  "SEZL": {
+    "setupType": "inside_day",
+    "alertedAt": 1773239781498
+  },
+  "W": {
+    "setupType": "inside_day",
+    "alertedAt": 1773151819923
+  },
+  "EXAS": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236801866
+  },
+  "VST": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773235821969
+  },
+  "JNJ": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "AVAV": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773235821969
+  },
+  "ORCL": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773235821969
+  },
+  "O": {
+    "setupType": "inside_day",
+    "alertedAt": 1773152603170
+  },
+  "NAIL": {
+    "setupType": "inside_day",
+    "alertedAt": 1773152603483
+  },
+  "COIN": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773239781498
+  },
+  "KO": {
+    "setupType": "inside_day",
+    "alertedAt": 1773154264657
+  },
+  "SPY": {
+    "setupType": "inside_day",
+    "alertedAt": 1773154264657
+  },
+  "ASML": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773171055017
+  },
+  "SHEL": {
+    "setupType": "inside_day",
+    "alertedAt": 1773155955901
+  },
+  "NOW": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "ADBE": {
+    "setupType": "leader_8_10d_buy",
+    "alertedAt": 1773235821969
+  },
+  "LAES": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236850544
+  },
+  "ARM": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773164345961
+  },
+  "MRNA": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236801866
+  },
+  "CMG": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236801866
+  },
+  "ENVX": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236850544
+  },
+  "LEN": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773237352385
+  },
+  "ARKG": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236910237
+  },
+  "AAPL": {
+    "setupType": "leader_8_10d_sell",
+    "alertedAt": 1773172736963
+  },
+  "CRSP": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "TEM": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "QS": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "EQIX": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236801866
+  },
+  "NET": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "HOOD": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "SMR": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "BE": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "IONQ": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "QUBT": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "SOFI": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "RBLX": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "AMSC": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236850544
+  },
+  "AVA": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236910237
+  },
+  "BKSY": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236910237
+  },
+  "SCHW": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236910237
+  },
+  "CBRE": {
+    "setupType": "multi_inside_day",
+    "alertedAt": 1773236910237
+  },
+  "JOBY": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236910237
+  },
+  "TER": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236910237
+  },
+  "ALAB": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236910237
+  },
+  "CCJ": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236910237
+  },
+  "OKLO": {
+    "setupType": "inside_day",
+    "alertedAt": 1773236910237
+  },
+  "QBTS": {
+    "setupType": "inside_day",
+    "alertedAt": 1773237346492
+  },
+  "RDDT": {
+    "setupType": "inside_day",
+    "alertedAt": 1773237346492
+  },
+  "RIOT": {
+    "setupType": "inside_day",
+    "alertedAt": 1773237986513
+  },
+  "LEU": {
+    "setupType": "inside_day",
+    "alertedAt": 1773237986513
+  },
+  "SYM": {
+    "setupType": "inside_day",
+    "alertedAt": 1773239781498
+  },
+  "TD": {
+    "setupType": "inside_day",
+    "alertedAt": 1773240612548
+  }
+}
