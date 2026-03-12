@@ -29,43 +29,7 @@ function buildSectorMap() {
   return map;
 }
 
-// ── Setup #1: Double/Triple Inside Day (highest priority — extreme compression) ──
-function detectMultiInsideDay(bars) {
-  if (!bars || bars.length < 3) return null;
-
-  let insideDays = 0;
-  // bars[0] = today, bars[1] = yesterday, etc.
-  // Check if each day's range fits inside the previous day's range
-  for (let i = 0; i < bars.length - 1; i++) {
-    const day = bars[i];
-    const prev = bars[i + 1];
-    if (day.high == null || day.low == null || prev.high == null || prev.low == null) break;
-    if (day.high < prev.high && day.low > prev.low) {
-      insideDays++;
-    } else {
-      break;
-    }
-  }
-
-  if (insideDays >= 2) {
-    const label = insideDays >= 3 ? 'Triple Inside Day' : 'Double Inside Day';
-    const motherBar = bars[insideDays]; // the containing bar
-    const today = bars[0];
-    const compression = motherBar.high - motherBar.low > 0
-      ? ((1 - (today.high - today.low) / (motherBar.high - motherBar.low)) * 100).toFixed(0)
-      : 0;
-    return {
-      type: 'multi_inside_day',
-      priority: 1,
-      label,
-      description: `${insideDays} consecutive inside days — ${compression}% range compression, coiled for explosive move`,
-      metrics: { insideDays, compression: `${compression}%` },
-    };
-  }
-  return null;
-}
-
-// ── Setup #2: Single Inside Day ──
+// ── Setup #1: Single Inside Day ──
 function detectInsideDay(bars) {
   if (!bars || bars.length < 2) return null;
   const today = bars[0];
@@ -87,45 +51,7 @@ function detectInsideDay(bars) {
   return null;
 }
 
-// ── Setup #3: 21 SMA Reclaim (was below, now above) ──
-function detect21SMAReclaim(price, prevClose, smas) {
-  const sma21 = smas[21];
-  const sma50 = smas[50];
-  if (sma21 == null || prevClose == null || price == null) return null;
-
-  if (prevClose < sma21 && price > sma21) {
-    const aboveSma50 = sma50 != null && price > sma50;
-    return {
-      type: 'sma_reclaim',
-      priority: 3,
-      label: '21 SMA Reclaim',
-      description: `Reclaimed 21 SMA ($${sma21.toFixed(2)}) — ${aboveSma50 ? 'still above 50 SMA, bullish' : 'watch for follow-through'}`,
-      metrics: { sma21: sma21.toFixed(2), prevClose: prevClose.toFixed(2) },
-    };
-  }
-  return null;
-}
-
-// ── Setup #4: 21 EMA Pullback (in uptrend, testing support) ──
-function detect21EMAPullback(price, smas) {
-  const sma21 = smas[21];
-  const sma50 = smas[50];
-  if (sma21 == null || sma50 == null || price == null) return null;
-
-  const pctFrom21 = ((price - sma21) / sma21) * 100;
-  if (Math.abs(pctFrom21) <= 1.5 && price > sma50 && sma21 > sma50) {
-    return {
-      type: 'ema_pullback',
-      priority: 4,
-      label: '21 EMA Pullback',
-      description: `${Math.abs(pctFrom21).toFixed(1)}% from 21 SMA in uptrend — pullback to support at $${sma21.toFixed(2)}`,
-      metrics: { pctFrom21: `${pctFrom21.toFixed(1)}%`, sma21: sma21.toFixed(2) },
-    };
-  }
-  return null;
-}
-
-// ── Setup #5: Stage 2 Breakout (Minervini trend template) ──
+// ── Setup #2: Stage 2 Breakout (Minervini trend template) ──
 function detectStage2Breakout(price, smas, weekHigh52) {
   const sma50 = smas[50];
   const sma200 = smas[200];
@@ -262,31 +188,6 @@ function detectVolumeSurge(bars, avgVolume) {
   return null;
 }
 
-// ── Setup #10: Tight Consolidation (narrow range over multiple days) ──
-function detectTightConsolidation(bars, price) {
-  if (!bars || bars.length < 5 || price == null || price === 0) return null;
-
-  const fiveBars = bars.slice(0, 5);
-  const allHighs = fiveBars.map(b => b.high).filter(h => h != null);
-  const allLows = fiveBars.map(b => b.low).filter(l => l != null);
-  if (allHighs.length < 5 || allLows.length < 5) return null;
-
-  const rangeHigh = Math.max(...allHighs);
-  const rangeLow = Math.min(...allLows);
-  const rangePct = ((rangeHigh - rangeLow) / price) * 100;
-
-  if (rangePct <= 4) {
-    return {
-      type: 'tight_range',
-      priority: 10,
-      label: 'Tight Range',
-      description: `5-day range only ${rangePct.toFixed(1)}% — $${rangeLow.toFixed(2)} to $${rangeHigh.toFixed(2)}, coiling for a move`,
-      metrics: { rangePct: `${rangePct.toFixed(1)}%`, rangeHigh: rangeHigh.toFixed(2), rangeLow: rangeLow.toFixed(2) },
-    };
-  }
-  return null;
-}
-
 // ── Chart Pattern Detection (badge-level signals) ──
 function detectPatterns(bars, smas, rsi, avgVolume) {
   const patterns = [];
@@ -400,29 +301,7 @@ const LEADER_TICKERS = new Set([
   'BKNG','ABNB',
 ]);
 
-// ── Setup #11: Near 21d SMA — potential buy ──
-function detectNear21dBuy(price, smas) {
-  const sma21 = smas[21];
-  const sma50 = smas[50];
-  if (sma21 == null || price == null) return null;
-
-  const pctFrom21 = ((price - sma21) / sma21) * 100;
-  // Within 0-1% of the 21d, in uptrend (price > 50 SMA or 21 > 50)
-  const inUptrend = (sma50 != null && (price > sma50 || sma21 > sma50));
-  if (pctFrom21 >= -1.0 && pctFrom21 <= 1.0 && inUptrend) {
-    const side = pctFrom21 >= 0 ? 'sitting on' : 'dipping to';
-    return {
-      type: 'near_21d_buy',
-      priority: 3,
-      label: 'Near 21d Buy',
-      description: `${Math.abs(pctFrom21).toFixed(1)}% from 21 SMA ($${sma21.toFixed(2)}) — ${side} support in uptrend`,
-      metrics: { pctFrom21: `${pctFrom21.toFixed(1)}%`, sma21: sma21.toFixed(2) },
-    };
-  }
-  return null;
-}
-
-// ── Setup #12: Leader near 8/10d SMA — potential buy ──
+// ── Setup #3: Leader near 8/10d SMA — potential buy ──
 function detectLeader810dBuy(ticker, price, smas) {
   if (!LEADER_TICKERS.has(ticker)) return null;
   const sma8 = smas[8];
@@ -456,60 +335,7 @@ function detectLeader810dBuy(ticker, price, smas) {
   return null;
 }
 
-// ── Setup #13: Near 21d SMA — potential sell (breakdown from above) ──
-function detectNear21dSell(price, smas) {
-  const sma21 = smas[21];
-  const sma50 = smas[50];
-  if (sma21 == null || price == null) return null;
-
-  const pctFrom21 = ((price - sma21) / sma21) * 100;
-  // Below 21d by 0-1%, and in downtrend (below 50 SMA or 21 < 50)
-  const inDowntrend = (sma50 != null && (price < sma50 || sma21 < sma50));
-  if (pctFrom21 >= -1.0 && pctFrom21 <= 0 && inDowntrend) {
-    return {
-      type: 'near_21d_sell',
-      priority: 3,
-      label: 'Near 21d Sell',
-      description: `${Math.abs(pctFrom21).toFixed(1)}% below 21 SMA ($${sma21.toFixed(2)}) — losing support in downtrend, short/exit candidate`,
-      metrics: { pctFrom21: `${pctFrom21.toFixed(1)}%`, sma21: sma21.toFixed(2) },
-    };
-  }
-  return null;
-}
-
-// ── Setup #14: Leader near 8/10d SMA — potential sell (breaking down) ──
-function detectLeader810dSell(ticker, price, smas) {
-  if (!LEADER_TICKERS.has(ticker)) return null;
-  const sma8 = smas[8];
-  const sma10 = smas[10];
-  const sma21 = smas[21];
-  if (price == null) return null;
-
-  let bestMA = null, bestPct = Infinity, bestPeriod = null;
-  for (const [period, val] of [[8, sma8], [10, sma10]]) {
-    if (val == null) continue;
-    const pct = ((price - val) / val) * 100;
-    if (Math.abs(pct) < Math.abs(bestPct)) {
-      bestMA = val; bestPct = pct; bestPeriod = period;
-    }
-  }
-  if (bestMA == null) return null;
-
-  // Below 8/10d by 0-1%, and breaking trend (below 21d too)
-  const belowTrend = sma21 != null && price < sma21;
-  if (bestPct >= -1.0 && bestPct <= 0 && belowTrend) {
-    return {
-      type: 'leader_8_10d_sell',
-      priority: 2,
-      label: `Leader ${bestPeriod}d Sell`,
-      description: `${Math.abs(bestPct).toFixed(1)}% below ${bestPeriod} SMA ($${bestMA.toFixed(2)}) — leader losing short-term momentum`,
-      metrics: { period: bestPeriod, pctFromMA: `${bestPct.toFixed(1)}%`, smaValue: bestMA.toFixed(2) },
-    };
-  }
-  return null;
-}
-
-// ── Setup #15: RSI < 20 — deeply oversold ──
+// ── Setup #12: RSI < 20 — deeply oversold ──
 function detectRSIOversold(rsi, price) {
   if (rsi == null || price == null) return null;
   if (rsi < 20) {
@@ -791,20 +617,8 @@ export async function scanWatchlist() {
       scanned++;
       const setups = [];
 
-      // Priority order — multi inside day supersedes single inside day
-      const multiInside = detectMultiInsideDay(data.bars);
-      if (multiInside) {
-        setups.push(multiInside);
-      } else {
-        const singleInside = detectInsideDay(data.bars);
-        if (singleInside) setups.push(singleInside);
-      }
-
-      const reclaim = detect21SMAReclaim(data.price, data.prevClose, data.smas);
-      if (reclaim) setups.push(reclaim);
-
-      const pullback = detect21EMAPullback(data.price, data.smas);
-      if (pullback) setups.push(pullback);
+      const singleInside = detectInsideDay(data.bars);
+      if (singleInside) setups.push(singleInside);
 
       const breakout = detectStage2Breakout(data.price, data.smas, data.weekHigh52);
       if (breakout) setups.push(breakout);
@@ -818,17 +632,8 @@ export async function scanWatchlist() {
       const breakdown = detectBreakdown(data.price, data.prevClose, data.smas);
       if (breakdown) setups.push(breakdown);
 
-      const near21Buy = detectNear21dBuy(data.price, data.smas);
-      if (near21Buy) setups.push(near21Buy);
-
       const leader810Buy = detectLeader810dBuy(data.ticker, data.price, data.smas);
       if (leader810Buy) setups.push(leader810Buy);
-
-      const near21Sell = detectNear21dSell(data.price, data.smas);
-      if (near21Sell) setups.push(near21Sell);
-
-      const leader810Sell = detectLeader810dSell(data.ticker, data.price, data.smas);
-      if (leader810Sell) setups.push(leader810Sell);
 
       const rsiOversold = detectRSIOversold(data.rsi, data.price);
       if (rsiOversold) setups.push(rsiOversold);
@@ -838,9 +643,6 @@ export async function scanWatchlist() {
 
       const volSurge = detectVolumeSurge(data.bars, data.avgVolume);
       if (volSurge) setups.push(volSurge);
-
-      const tightRange = detectTightConsolidation(data.bars, data.price);
-      if (tightRange) setups.push(tightRange);
 
       // Detect chart patterns (badge-level signals)
       const patterns = detectPatterns(data.bars, data.smas, data.rsi, data.avgVolume);
