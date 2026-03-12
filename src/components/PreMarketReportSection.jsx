@@ -299,7 +299,7 @@ function GapScannerCard({ data, onTickerClick }) {
           letterSpacing: '0.04em',
           textTransform: 'uppercase',
         }}>
-          Gap Scanner
+          Gappers
         </span>
         <span style={{
           fontSize: '9px',

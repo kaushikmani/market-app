@@ -40,10 +40,10 @@ import {
 
 
 const TABS = [
-  { key: 'market', label: 'Market' },
-  { key: 'stock', label: 'Stock' },
-  { key: 'notes', label: 'Notes' },
-  { key: 'outlook', label: '2026 Outlook' },
+  { key: 'market', label: 'Morning Brief' },
+  { key: 'stock', label: 'Deep Dive' },
+  { key: 'notes', label: 'Journal' },
+  { key: 'outlook', label: 'Outlook' },
 ];
 
 function parseNum(str) {
@@ -273,7 +273,7 @@ function App() {
 
             {/* ── 2. Sentiment (Fear & Greed) — critical daily context ── */}
             <div style={{ marginTop: '24px' }}>
-              <SectionDivider title="Market Sentiment" />
+              <SectionDivider title="Sentiment" />
             </div>
             <div style={{ marginTop: '8px' }}>
               <MarketSentimentSection />
@@ -282,7 +282,7 @@ function App() {
             {/* ── 3. Live Gap Scanner + Alerts button ── */}
             <div style={{ marginTop: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <SectionDivider title="Gap Scanner" />
+                <SectionDivider title="Gappers" />
                 <button
                   onClick={() => setShowAlerts(true)}
                   style={{
@@ -306,7 +306,7 @@ function App() {
 
             {/* ── 4. Today's Setups — most actionable, moved up ── */}
             <div style={{ marginTop: '24px' }}>
-              <SectionDivider title="Today's Setups" subtitle={loadingScan ? 'Scanning watchlist...' : ''} />
+              <SectionDivider title="Setups" subtitle={loadingScan ? 'Scanning...' : ''} />
             </div>
             <div style={{ marginTop: '8px' }}>
               <TodaysSetupsSection data={watchlistScan} loading={loadingScan} error={errors.watchlistScan} onTickerClick={handleTickerClick} />
@@ -334,7 +334,7 @@ function App() {
 
             {/* ── 8. Market News — background reading ── */}
             <div style={{ marginTop: '24px' }}>
-              <SectionDivider title="Market News" subtitle={loadingMarketNews ? 'Loading...' : ''} />
+              <SectionDivider title="News" subtitle={loadingMarketNews ? 'Loading...' : ''} />
             </div>
             <div style={{ marginTop: '8px' }}>
               <NewsSection data={news} loading={loadingMarketNews} error={errors.news} />
@@ -455,7 +455,7 @@ function App() {
                 />
               )}
 
-              <SectionDivider title="Technical Analysis" />
+              <SectionDivider title="Technicals" />
               {loading && !stock ? (
                 <div className="flex flex-col gap-3">
                   <div className="card" style={{ padding: '20px' }}>
@@ -485,7 +485,7 @@ function App() {
                 </div>
               )}
 
-              <SectionDivider title="Similar Stocks" subtitle={loadingPeers ? 'Loading peers...' : ''} />
+              <SectionDivider title="Peers" subtitle={loadingPeers ? 'Loading...' : ''} />
               <SimilarStocksSection
                 data={finvizPeers}
                 loading={loadingPeers}
@@ -494,7 +494,7 @@ function App() {
                 onTickerClick={handleTickerClick}
               />
 
-              <SectionDivider title="Stock News" subtitle={loadingNews ? 'Loading news...' : ''} />
+              <SectionDivider title="Headlines" subtitle={loadingNews ? 'Loading...' : ''} />
               <StockNewsSection data={stockNews} loading={loadingNews} error={errors.stockNews} />
 
             </div>

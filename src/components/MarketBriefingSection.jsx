@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Theme } from '../models/Theme';
 
 const TABS = [
-  { key: 'news', label: 'Market News' },
-  { key: 'trading', label: 'Trading' },
+  { key: 'news', label: 'News' },
+  { key: 'trading', label: 'Trade Ideas' },
 ];
 
 function timeAgo(dateStr) {

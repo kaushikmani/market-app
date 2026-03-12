@@ -439,7 +439,7 @@ const BriefSection = ({ brief, briefLoading, onTickerClick }) => {
     return (
       <div className="card" style={{ padding: '16px', borderLeft: `3px solid ${Theme.colors.accentBlue}` }}>
         <div style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText, marginBottom: '8px' }}>
-          Trading Brief
+          Brief
         </div>
         <div style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>
           Generating consolidated brief...
@@ -479,7 +479,7 @@ const BriefSection = ({ brief, briefLoading, onTickerClick }) => {
     <div className="card" style={{ padding: '16px', borderLeft: `3px solid ${Theme.colors.accentBlue}` }}>
       <div style={{ marginBottom: '14px' }}>
         <div style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText, marginBottom: '2px' }}>
-          Trading Brief
+          Brief
         </div>
         <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
           Consolidated from last 4 days of notes
@@ -1182,7 +1182,7 @@ export const TradingNotesSection = ({ onTickerClick }) => {
           letterSpacing: '-0.02em',
           marginBottom: '4px',
         }}>
-          Trading Notes
+          Journal
         </div>
         <span style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>
           Inner Circle journal — last 5 days
