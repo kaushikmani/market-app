@@ -24,7 +24,6 @@ import { ChartModal } from './components/ChartModal';
 import { EarningsCalendarSection } from './components/EarningsCalendarSection';
 import { MarketSentimentSection } from './components/MarketSentimentSection';
 import { AlertsPanel } from './components/AlertsPanel';
-import { AskAIPanel } from './components/AskAIPanel';
 import { ApiService } from './services/ApiService';
 import { useMarketData } from './hooks/useMarketData';
 import { Theme } from './models/Theme';
@@ -124,7 +123,6 @@ function App() {
   const [tickerInput, setTickerInput] = useState('AAPL');
   const [chartModalTicker, setChartModalTicker] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
-  const [askAITicker, setAskAITicker] = useState(null);
   const [inputFocused, setInputFocused] = useState(false);
   const stockZoneRef = useRef(null);
 
@@ -209,14 +207,6 @@ function App() {
         onOpenFull={handleTickerClick}
       />
       {showAlerts && <AlertsPanel onClose={() => setShowAlerts(false)} />}
-      {askAITicker && (
-        <AskAIPanel
-          ticker={askAITicker}
-          smaData={smaData}
-          finvizQuote={finvizQuote}
-          onClose={() => setAskAITicker(null)}
-        />
-      )}
       <WatchlistSidebar activeTicker={ticker} onTickerClick={handleTickerClick} onChartClick={setChartModalTicker} />
 
       <div style={{
@@ -404,25 +394,6 @@ function App() {
                   }}
                 >
                   Search
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAskAITicker(ticker)}
-                  style={{
-                    background: 'transparent',
-                    border: `1px solid ${Theme.colors.cardBorder}`,
-                    borderRadius: Theme.radius.md,
-                    color: Theme.colors.secondaryText,
-                    padding: '11px 16px',
-                    fontSize: '12px', fontWeight: 700,
-                    cursor: 'pointer', fontFamily: 'inherit',
-                    letterSpacing: '0.04em',
-                    display: 'flex', alignItems: 'center', gap: '5px',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = Theme.colors.accentBlueBorder; e.currentTarget.style.color = Theme.colors.accentBlue; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = Theme.colors.cardBorder; e.currentTarget.style.color = Theme.colors.secondaryText; }}
-                >
-                  ✦ Ask AI
                 </button>
                 {loading && (
                   <div className="flex items-center gap-2" style={{ marginLeft: '4px' }}>
