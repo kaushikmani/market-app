@@ -305,15 +305,7 @@ function App() {
               <GapScannerSection onTickerClick={handleTickerClick} onChartClick={setChartModalTicker} />
             </div>
 
-            {/* ── 4. Today's Setups — most actionable, moved up ── */}
-            <div style={{ marginTop: '24px' }}>
-              <SectionDivider title="Setups" subtitle={loadingScan ? 'Scanning...' : ''} />
-            </div>
-            <div style={{ marginTop: '8px' }}>
-              <TodaysSetupsSection data={watchlistScan} loading={loadingScan} error={errors.watchlistScan} onTickerClick={handleTickerClick} />
-            </div>
-
-            {/* ── 5. Pre-Market Macro Report — context after action items ── */}
+            {/* ── 4. Pre-Market Macro Report ── */}
             <div style={{ marginTop: '24px' }}>
               <PreMarketReportSection
                 data={preMarketReport}
@@ -321,6 +313,14 @@ function App() {
                 error={preMarketError}
                 onTickerClick={handleTickerClick}
               />
+            </div>
+
+            {/* ── 5. Setups ── */}
+            <div style={{ marginTop: '24px' }}>
+              <SectionDivider title="Setups" subtitle={loadingScan ? 'Scanning...' : ''} />
+            </div>
+            <div style={{ marginTop: '8px' }}>
+              <TodaysSetupsSection data={watchlistScan} loading={loadingScan} error={errors.watchlistScan} onTickerClick={handleTickerClick} />
             </div>
 
             {/* ── 6. Theme Performance — sector rotation context ── */}
