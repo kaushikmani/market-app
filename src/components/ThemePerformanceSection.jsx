@@ -23,112 +23,148 @@ function barColor(changePct) {
 }
 
 // ── Single theme row ─────────────────────────────────────────────────────────
-function ThemeRow({ theme, rank, maxAbsValue, onTickerClick }) {
+function ThemeRow({ theme, rank, maxAbsValue, onTickerClick, expanded, onToggle }) {
   const pct      = theme.changePct;
   const positive = pct >= 0;
   const pctColor = positive ? '#00d68f' : '#ff4d4d';
   const barW     = Math.min(Math.abs(pct) / (maxAbsValue || 1) * 100, 100);
   const color    = barColor(pct);
 
+  // Derive top movers from stocks array
+  const sorted   = [...(theme.stocks || [])].sort((a, b) => b.changePct - a.changePct);
+  const winners  = sorted.filter(s => s.changePct > 0).slice(0, 2);
+  const losers   = sorted.filter(s => s.changePct < 0).slice(-1);
+  const breadth  = theme.stocks?.length
+    ? Math.round((theme.stocks.filter(s => s.changePct >= 0).length / theme.stocks.length) * 100)
+    : 0;
+
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: '16px 1fr 140px 52px 72px',
-      alignItems: 'center',
-      gap: '10px',
-      padding: '7px 10px',
-      borderBottom: `1px solid ${Theme.colors.cardBorder}`,
-      transition: 'background 0.1s',
-    }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-    >
-      {/* Rank */}
-      <span style={{ fontSize: '9px', color: Theme.colors.tertiaryText, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-        {rank}
-      </span>
+    <>
+      <div
+        onClick={onToggle}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '16px 1fr 140px 52px 72px',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '7px 10px',
+          borderBottom: expanded ? 'none' : `1px solid ${Theme.colors.cardBorder}`,
+          transition: 'background 0.1s',
+          cursor: 'pointer',
+          background: expanded ? 'rgba(255,255,255,0.025)' : 'transparent',
+        }}
+        onMouseEnter={e => { if (!expanded) e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
+        onMouseLeave={e => { if (!expanded) e.currentTarget.style.background = 'transparent'; }}
+      >
+        {/* Rank */}
+        <span style={{ fontSize: '9px', color: Theme.colors.tertiaryText, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+          {rank}
+        </span>
 
-      {/* Name + movers */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          fontSize: '11px', fontWeight: 700,
-          color: Theme.colors.primaryText,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          letterSpacing: '0.01em',
+        {/* Name + movers */}
+        <div style={{ minWidth: 0 }}>
+          <div style={{
+            fontSize: '11px', fontWeight: 700,
+            color: Theme.colors.primaryText,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            letterSpacing: '0.01em',
+            display: 'flex', alignItems: 'center', gap: '5px',
+          }}>
+            <span style={{
+              fontSize: '7px', color: Theme.colors.tertiaryText,
+              transition: 'transform 0.2s',
+              transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              display: 'inline-block',
+            }}>▶</span>
+            {theme.name}
+          </div>
+          <div style={{ display: 'flex', gap: '3px', marginTop: '2px', flexWrap: 'nowrap' }}>
+            {winners.map(s => (
+              <span key={s.symbol}
+                onClick={e => { e.stopPropagation(); onTickerClick(s.symbol); }}
+                style={{ fontSize: '8px', fontWeight: 700, color: '#00d68f', cursor: 'pointer', padding: '0px 3px', borderRadius: '2px', background: 'rgba(0,214,143,0.08)' }}
+              >{s.symbol}</span>
+            ))}
+            {losers[0] && (
+              <span onClick={e => { e.stopPropagation(); onTickerClick(losers[0].symbol); }}
+                style={{ fontSize: '8px', fontWeight: 700, color: '#ff4d4d', cursor: 'pointer', padding: '0px 3px', borderRadius: '2px', background: 'rgba(255,77,77,0.08)' }}
+              >{losers[0].symbol}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Bar */}
+        <div style={{ position: 'relative', height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.05)' }}>
+          <div style={{
+            position: 'absolute',
+            left: positive ? 0 : `${100 - barW}%`,
+            width: `${barW}%`,
+            height: '100%',
+            borderRadius: '3px',
+            background: color,
+            transition: 'width 0.5s ease',
+          }} />
+        </div>
+
+        {/* % change */}
+        <span className="tabular-nums" style={{ fontSize: '12px', fontWeight: 800, color: pctColor, textAlign: 'right', letterSpacing: '-0.01em' }}>
+          {positive ? '+' : ''}{pct.toFixed(2)}%
+        </span>
+
+        {/* Breadth badge */}
+        <span style={{
+          fontSize: '9px', fontWeight: 600,
+          color: positive ? '#00d68f' : '#ff4d4d',
+          background: positive ? 'rgba(0,214,143,0.10)' : 'rgba(255,77,77,0.10)',
+          padding: '2px 6px', borderRadius: '4px', textAlign: 'center', whiteSpace: 'nowrap',
         }}>
-          {theme.name}
-        </div>
-        <div style={{ display: 'flex', gap: '3px', marginTop: '2px', flexWrap: 'nowrap' }}>
-          {theme.topWinners?.slice(0, 2).map(s => (
-            <span
-              key={s.ticker}
-              onClick={e => { e.stopPropagation(); onTickerClick(s.ticker); }}
-              style={{
-                fontSize: '8px', fontWeight: 700,
-                color: '#00d68f',
-                cursor: 'pointer',
-                padding: '0px 3px',
-                borderRadius: '2px',
-                background: 'rgba(0,214,143,0.08)',
-              }}
-            >
-              {s.ticker}
-            </span>
-          ))}
-          {theme.topLosers?.[0] && (
-            <span
-              onClick={e => { e.stopPropagation(); onTickerClick(theme.topLosers[0].ticker); }}
-              style={{
-                fontSize: '8px', fontWeight: 700,
-                color: '#ff4d4d',
-                cursor: 'pointer',
-                padding: '0px 3px',
-                borderRadius: '2px',
-                background: 'rgba(255,77,77,0.08)',
-              }}
-            >
-              {theme.topLosers[0].ticker}
-            </span>
-          )}
-        </div>
+          {positive ? '▲' : '▼'} {breadth}%
+        </span>
       </div>
 
-      {/* Bar */}
-      <div style={{ position: 'relative', height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.05)' }}>
+      {/* Expanded stock breakdown */}
+      {expanded && (
         <div style={{
-          position: 'absolute',
-          left: positive ? 0 : `${100 - barW}%`,
-          width: `${barW}%`,
-          height: '100%',
-          borderRadius: '3px',
-          background: color,
-          transition: 'width 0.5s ease',
-        }} />
-      </div>
-
-      {/* % change */}
-      <span className="tabular-nums" style={{
-        fontSize: '12px', fontWeight: 800,
-        color: pctColor,
-        textAlign: 'right',
-        letterSpacing: '-0.01em',
-      }}>
-        {positive ? '+' : ''}{pct.toFixed(2)}%
-      </span>
-
-      {/* Breadth badge */}
-      <span style={{
-        fontSize: '9px', fontWeight: 600,
-        color: positive ? '#00d68f' : '#ff4d4d',
-        background: positive ? 'rgba(0,214,143,0.10)' : 'rgba(255,77,77,0.10)',
-        padding: '2px 6px',
-        borderRadius: '4px',
-        textAlign: 'center',
-        whiteSpace: 'nowrap',
-      }}>
-        {positive ? '▲' : '▼'} {theme.breadth}%
-      </span>
-    </div>
+          borderBottom: `1px solid ${Theme.colors.cardBorder}`,
+          background: 'rgba(255,255,255,0.015)',
+          padding: '8px 10px 10px 36px',
+        }}>
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '4px',
+          }}>
+            {sorted.map(s => {
+              const up = s.changePct >= 0;
+              return (
+                <div
+                  key={s.symbol}
+                  onClick={() => onTickerClick(s.symbol)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    padding: '3px 7px',
+                    borderRadius: '4px',
+                    background: up ? 'rgba(0,214,143,0.07)' : 'rgba(255,77,77,0.07)',
+                    border: `1px solid ${up ? 'rgba(0,214,143,0.18)' : 'rgba(255,77,77,0.18)'}`,
+                    cursor: 'pointer',
+                    transition: 'opacity 0.1s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.75'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  <span style={{ fontSize: '10px', fontWeight: 700, color: Theme.colors.primaryText, fontFamily: 'var(--font-mono)', letterSpacing: '0.03em' }}>
+                    {s.symbol}
+                  </span>
+                  <span style={{ fontSize: '10px', fontWeight: 600, color: up ? '#00d68f' : '#ff4d4d', fontFamily: 'var(--font-mono)' }}>
+                    {up ? '+' : ''}{s.changePct.toFixed(2)}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -159,12 +195,13 @@ function SkeletonRow() {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export function ThemePerformanceSection({ onTickerClick }) {
-  const [range, setRange]       = useState('today');
-  const [filter, setFilter]     = useState('all');   // 'all' | 'gaining' | 'losing'
-  const [data, setData]         = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [range, setRange]         = useState('today');
+  const [filter, setFilter]       = useState('all');
+  const [data, setData]           = useState(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [expandedTheme, setExpandedTheme] = useState(null);
   const intervalRef = useRef(null);
 
   const fetchData = (r) => {
@@ -380,6 +417,8 @@ export function ThemePerformanceSection({ onTickerClick }) {
               rank={i + 1}
               maxAbsValue={maxAbsValue}
               onTickerClick={onTickerClick}
+              expanded={expandedTheme === theme.name}
+              onToggle={() => setExpandedTheme(expandedTheme === theme.name ? null : theme.name)}
             />
           ))
         )}
