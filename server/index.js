@@ -28,6 +28,8 @@ import { fetchMarketSentiment } from './scrapers/marketSentiment.js';
 import { callGemini } from './services/whisperService.js';
 import notesRouter from './routes/notes.js';
 import { WATCHLIST } from './data/watchlist.js';
+import { polygonGet } from './services/polygon.js';
+import { fetchEarningsHistory } from './scrapers/earningsHistory.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -152,22 +154,33 @@ app.get('/api/stock-news', async (req, res) => {
   if (tickerErr) return res.status(400).json({ error: tickerErr });
 
   try {
-    // Fetch all sources in parallel: Google News + Finviz News + X Posts
-    const [googleRes, finvizRes, xRes] = await Promise.allSettled([
+    // Fetch all sources in parallel: Google News + Finviz News + X Posts + Polygon News
+    const [googleRes, finvizRes, xRes, polygonRes] = await Promise.allSettled([
       scrapeGoogleNews(ticker),
       scrapeFinvizNews(ticker),
       scrapeXPosts(ticker),
+      polygonGet('/v2/reference/news', { ticker: ticker.toUpperCase(), limit: 10, order: 'desc', sort: 'published_utc' }),
     ]);
 
     const googleNews = googleRes.status === 'fulfilled' && googleRes.value.success ? googleRes.value.news : [];
     const finvizNews = finvizRes.status === 'fulfilled' && finvizRes.value.success ? finvizRes.value.news : [];
     const xPosts = xRes.status === 'fulfilled' && xRes.value.success ? xRes.value.news : [];
+    const polygonNews = polygonRes.status === 'fulfilled'
+      ? (polygonRes.value.results || []).map(n => ({
+          title: n.title,
+          url: n.article_url,
+          source: n.publisher?.name || 'Polygon',
+          time: n.published_utc,
+          tickers: n.tickers || [],
+        }))
+      : [];
 
     res.json({
       ticker: ticker.toUpperCase(),
       google: googleNews,
       finviz: finvizNews,
       x: xPosts,
+      polygon: polygonNews,
       success: true,
     });
   } catch (error) {
@@ -675,6 +688,56 @@ app.get('/api/watchlist-prices', async (req, res) => {
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Market status from Polygon
+app.get('/api/market-status', async (req, res) => {
+  try {
+    const data = await polygonGet('/v1/marketstatus/now');
+    res.json({
+      market: data.market,
+      serverTime: data.serverTime,
+      exchanges: data.exchanges,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Ticker reference data
+app.get('/api/ticker-info', async (req, res) => {
+  const { ticker } = req.query;
+  const tickerErr = validateTicker(ticker);
+  if (tickerErr) return res.status(400).json({ error: tickerErr });
+  try {
+    const data = await polygonGet(`/v3/reference/tickers/${ticker.toUpperCase()}`);
+    const r = data.results || {};
+    res.json({
+      name: r.name,
+      description: r.description,
+      marketCap: r.market_cap,
+      shareClassSharesOutstanding: r.share_class_shares_outstanding,
+      totalEmployees: r.total_employees,
+      listDate: r.list_date,
+      homepageUrl: r.homepage_url,
+      sicDescription: r.sic_description,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Earnings history + expected move
+app.get('/api/earnings-history', async (req, res) => {
+  const { ticker } = req.query;
+  const tickerErr = validateTicker(ticker);
+  if (tickerErr) return res.status(400).json({ error: tickerErr });
+  try {
+    const data = await fetchEarningsHistory(ticker);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

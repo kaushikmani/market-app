@@ -11,8 +11,12 @@ export async function fetchWatchlistPrices(tickers) {
   const results = {};
   for (const t of data.tickers || []) {
     results[t.ticker] = {
-      price: t.lastTrade?.p || t.day?.c || null,
-      changePct: t.todaysChangePerc ?? null,
+      price: t.min?.c || t.lastTrade?.p || t.day?.c,
+      changePct: t.todaysChangePerc,
+      change: t.todaysChange,
+      bid: t.lastQuote?.p || null,
+      ask: t.lastQuote?.P || null,
+      volume: t.day?.v || null,
       preMarketChangePct: null,
       postMarketChangePct: null,
     };

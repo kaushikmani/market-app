@@ -142,4 +142,13 @@ export const ApiService = {
   deleteNote: (id) =>
     fetch(`${API_BASE}/notes/${id}`, { method: 'DELETE' })
       .then(r => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); }),
+
+  getMarketStatus: () =>
+    fetchJson(`${API_BASE}/market-status`),
+
+  getTickerInfo: (ticker) =>
+    fetchJson(`${API_BASE}/ticker-info?ticker=${encodeURIComponent(ticker)}`),
+
+  getEarningsHistory: (ticker) =>
+    fetchJson(`${API_BASE}/earnings-history?ticker=${encodeURIComponent(ticker)}`),
 };

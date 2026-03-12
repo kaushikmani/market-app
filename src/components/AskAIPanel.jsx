@@ -8,9 +8,12 @@ const QUICK_QUESTIONS = [
   'Any red flags in this chart?',
   'What would make this a buy vs. avoid?',
   'How does this compare to its sector?',
+  'How has this stock moved on past earnings?',
+  'What is the expected move for earnings?',
+  'What are analysts expecting this quarter?',
 ];
 
-function buildContext(ticker, smaData, finvizQuote) {
+function buildContext(ticker, smaData, finvizQuote, earningsHistory) {
   const lines = [];
   if (smaData?.price) lines.push(`Current price: $${smaData.price}`);
   if (smaData?.rsi)   lines.push(`RSI (14): ${smaData.rsi.toFixed(1)}`);
@@ -31,6 +34,15 @@ function buildContext(ticker, smaData, finvizQuote) {
     if (f['52W High'])   lines.push(`52W High: ${f['52W High']}`);
     if (f['52W Low'])    lines.push(`52W Low: ${f['52W Low']}`);
   }
+  if (earningsHistory?.history?.length > 0) {
+    const lines2 = earningsHistory.history.slice(0, 6).map(h =>
+      `  ${h.date}: ${h.oneDayMove > 0 ? '+' : ''}${h.oneDayMove}% (prev close $${h.prevClose?.toFixed(2)})`
+    );
+    lines.push(`Past earnings moves:\n${lines2.join('\n')}`);
+    if (earningsHistory.expectedMove) {
+      lines.push(`Avg expected move (last 4 earnings): ±${earningsHistory.expectedMove}%`);
+    }
+  }
   return lines.join('\n');
 }
 
@@ -38,6 +50,7 @@ export function AskAIPanel({ ticker, smaData, finvizQuote, onClose }) {
   const [messages, setMessages] = useState([]);
   const [input,    setInput]    = useState('');
   const [loading,  setLoading]  = useState(false);
+  const [earningsHistory, setEarningsHistory] = useState(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -50,6 +63,11 @@ export function AskAIPanel({ ticker, smaData, finvizQuote, onClose }) {
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  useEffect(() => {
+    if (!ticker) return;
+    ApiService.getEarningsHistory(ticker).then(setEarningsHistory).catch(() => {});
+  }, [ticker]);
+
   const ask = async (question) => {
     if (!question.trim() || loading) return;
     const q = question.trim();
@@ -57,7 +75,7 @@ export function AskAIPanel({ ticker, smaData, finvizQuote, onClose }) {
     setMessages(prev => [...prev, { role: 'user', text: q }]);
     setLoading(true);
     try {
-      const context = buildContext(ticker, smaData, finvizQuote);
+      const context = buildContext(ticker, smaData, finvizQuote, earningsHistory);
       const data = await ApiService.askAI({ ticker, question: q, context });
       setMessages(prev => [...prev, { role: 'ai', text: data.answer || 'No response.' }]);
     } catch {
