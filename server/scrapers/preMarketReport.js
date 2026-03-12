@@ -1,6 +1,7 @@
 import { execSync } from 'child_process';
 import { callGemini } from '../services/whisperService.js';
 import { scrapeMarketBriefing } from './marketBriefing.js';
+import { scanGaps } from './gapScanner.js';
 
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -71,73 +72,6 @@ function fetchMarketData() {
   ];
   console.log('[PreMarketReport] Fetching market data for', symbols.length, 'symbols...');
   return fetchMultipleCharts(symbols);
-}
-
-// ── Fetch watchlist stocks for gap scanning ──
-const WATCHLIST = [
-  'SPY','QQQ','IWM','DIA','GLD','SLV','XLK','XLC','XLV','IGV','ARKG','NAIL',
-  'NVDA','TSLA','AAPL','MSFT','GOOGL','AMZN','META',
-  'CRWD','PANW','FTNT','ZS','OKTA','RBRK',
-  'MU','WDC','STX','PSTG',
-  'AMD','INTC','ARM','AVGO','MRVL','TXN','ADI','ON','TSM','GFS',
-  'ASML','LRCX','KLAC','AMAT','AMKR','ICHR','FORM','CAMT','TER',
-  'ALAB','CRDO','INDI','SOLS','AXTI',
-  'ANET','CIEN','LITE','APH','FN','POET','SKYT',
-  'SMCI','VRT','DELL','HPE','CLS','SANM','FLEX','WYFI','AEHR','PLAB',
-  'PLTR','ORCL','CRM','NOW','ADBE','TEAM','WDAY','HUBS','MDB','SNOW','DDOG','NET','PATH',
-  'MSTR','COIN','HOOD','MARA','RIOT','HUT','IREN','IBIT',
-  'VST','CEG','LEU','CCJ','OKLO','SMR','NNE','GEV',
-  'FSLR','ENPH','BE','PLUG',
-  'LMT','RTX','NOC','GD','BA','RKLB','ASTS',
-  'IONQ','RGTI','QBTS','QUBT',
-  'SOFI','ALLY','GS','JPM','BAC',
-  'BABA','BIDU','JD','PDD',
-  'RIVN','LCID','LI','XPEV',
-  'ACHR','JOBY',
-  'UNH','ABBV','LLY','NVO','MRNA','CRSP',
-  'RDDT','SNAP','PINS','SPOT','TTD','APP','DIS','NFLX',
-  'HD','WMT','NKE','KO',
-  'ABNB','BKNG','DAL','AAL',
-  'XOM','CVX','OXY',
-  'CAT','HON','FCX',
-];
-
-function fetchGapData() {
-  console.log('[PreMarketReport] Scanning', WATCHLIST.length, 'watchlist stocks...');
-  const allData = fetchMultipleCharts(WATCHLIST);
-
-  const gappers = [];
-  for (const sym of Object.keys(allData)) {
-    const d = allData[sym];
-
-    // Gap = (today's open - yesterday's close) / yesterday's close
-    // During pre-market (before open), fall back to preMarketPrice vs prevClose
-    let gapPct;
-    if (d.todayOpen != null && d.todayOpen > 0) {
-      gapPct = ((d.todayOpen - d.prevClose) / d.prevClose) * 100;
-    } else if (d.preMarketPrice != null) {
-      gapPct = ((d.preMarketPrice - d.prevClose) / d.prevClose) * 100;
-    } else {
-      continue; // Can't calculate gap without open or pre-market price
-    }
-
-    if (Math.abs(gapPct) >= 1.5) {
-      gappers.push({
-        ticker: sym,
-        change: (gapPct >= 0 ? '+' : '') + gapPct.toFixed(1) + '%',
-        changePct: gapPct,
-        open: d.todayOpen,
-        prevClose: d.prevClose,
-      });
-    }
-  }
-
-  gappers.sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
-
-  return {
-    gappingUp: gappers.filter(g => g.changePct > 0),
-    gappingDown: gappers.filter(g => g.changePct < 0),
-  };
 }
 
 // ── Extract catalysts from real news headlines ──
@@ -255,16 +189,30 @@ export async function generatePreMarketReport() {
   // Fetch news in parallel with Yahoo data (news doesn't use Yahoo)
   const newsPromise = scrapeMarketBriefing().catch(() => ({ google: [], x: [] }));
 
-  // Fetch Yahoo data via curl (synchronous but reliable)
+  // Fetch market data (Yahoo for futures/indices) + Polygon for stock gaps
   let market = {};
   let gaps = { gappingUp: [], gappingDown: [] };
   try {
     market = fetchMarketData();
-    gaps = fetchGapData();
-    console.log('[PreMarketReport] Got', Object.keys(market).length, 'market symbols,',
-      gaps.gappingUp.length, 'up,', gaps.gappingDown.length, 'down');
   } catch (e) {
-    console.error('[PreMarketReport] Yahoo data error:', e.message);
+    console.error('[PreMarketReport] Yahoo market data error:', e.message);
+  }
+  try {
+    const polygonGaps = await scanGaps();
+    const toGapper = (g) => ({
+      ticker: g.ticker,
+      change: (g.gapPct >= 0 ? '+' : '') + g.gapPct.toFixed(1) + '%',
+      changePct: g.gapPct,
+      open: g.open,
+      prevClose: g.prevClose,
+    });
+    gaps = {
+      gappingUp:   (polygonGaps.gapUps   || []).map(toGapper),
+      gappingDown: (polygonGaps.gapDowns || []).map(toGapper),
+    };
+    console.log('[PreMarketReport] Polygon gaps:', gaps.gappingUp.length, 'up,', gaps.gappingDown.length, 'down');
+  } catch (e) {
+    console.error('[PreMarketReport] Polygon gap data error:', e.message);
   }
 
   const news = await newsPromise;
