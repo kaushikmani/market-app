@@ -16,6 +16,7 @@ import { PreMarketReportSection } from './components/PreMarketReportSection';
 import { ThemePerformanceSection } from './components/ThemePerformanceSection';
 import { WatchlistSidebar } from './components/WatchlistSidebar';
 import { TradingNotesSection } from './components/TradingNotesSection';
+import { KeyLevelsSection } from './components/KeyLevelsSection';
 import { OutlookSection } from './components/OutlookSection';
 import { EarningsPreviewSection } from './components/EarningsPreviewSection';
 import { StockChart } from './components/StockChart';
@@ -484,6 +485,8 @@ function App() {
                   <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>Search a ticker to see technical data</span>
                 </div>
               )}
+
+              <KeyLevelsSection smaData={smaData} ticker={ticker} />
 
               <SectionDivider title="Peers" subtitle={loadingPeers ? 'Loading...' : ''} />
               <SimilarStocksSection

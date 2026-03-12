@@ -1117,12 +1117,35 @@ export const TradingNotesSection = ({ onTickerClick }) => {
   } = useNotes(5);
 
   const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedTicker, setSelectedTicker] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
 
+  // Collect all unique tickers across all notes, sorted alphabetically
+  const allTickers = useMemo(() => {
+    const tickerSet = new Set();
+    notesByDate.forEach(({ notes }) => {
+      notes.forEach(note => {
+        note.tickers?.forEach(t => tickerSet.add(t));
+      });
+    });
+    return Array.from(tickerSet).sort();
+  }, [notesByDate]);
+
   const filteredNotesByDate = useMemo(() => {
-    if (selectedDate === null) return notesByDate;
-    return notesByDate.filter(({ date }) => date === selectedDate);
-  }, [notesByDate, selectedDate]);
+    // First filter by date
+    const byDate = selectedDate === null
+      ? notesByDate
+      : notesByDate.filter(({ date }) => date === selectedDate);
+
+    // Then filter by ticker if one is selected
+    if (!selectedTicker) return byDate;
+    return byDate
+      .map(({ date, notes }) => ({
+        date,
+        notes: notes.filter(note => note.tickers?.includes(selectedTicker)),
+      }))
+      .filter(({ notes }) => notes.length > 0);
+  }, [notesByDate, selectedDate, selectedTicker]);
 
   const handleCreate = async (data) => {
     try {
@@ -1218,6 +1241,60 @@ export const TradingNotesSection = ({ onTickerClick }) => {
       {/* Add note form */}
       <AddNoteForm onSubmit={handleCreate} uploading={uploading} onUpload={handleUpload} onUploadImages={handleUploadImages} />
 
+      {/* Ticker filter bar */}
+      {allTickers.length > 0 && (
+        <div>
+          <div style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            color: Theme.colors.tertiaryText,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            marginBottom: '8px',
+          }}>
+            Filter by Ticker
+          </div>
+          <div className="flex items-center" style={{ flexWrap: 'wrap', gap: '6px' }}>
+            {/* All pill */}
+            <span
+              onClick={() => setSelectedTicker(null)}
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: Theme.radius.full,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                background: selectedTicker === null ? Theme.colors.accentBlue : 'transparent',
+                color: selectedTicker === null ? '#fff' : Theme.colors.secondaryText,
+                border: `1px solid ${selectedTicker === null ? Theme.colors.accentBlue : Theme.colors.cardBorder}`,
+              }}
+            >
+              All
+            </span>
+            {allTickers.map(t => (
+              <span
+                key={t}
+                onClick={() => setSelectedTicker(selectedTicker === t ? null : t)}
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  padding: '3px 10px',
+                  borderRadius: Theme.radius.full,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  background: selectedTicker === t ? Theme.colors.accentBlue : Theme.colors.accentBlueDim,
+                  color: selectedTicker === t ? '#fff' : Theme.colors.accentBlue,
+                  border: `1px solid ${selectedTicker === t ? Theme.colors.accentBlue : Theme.colors.accentBlueBorder}`,
+                }}
+              >
+                ${t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Day tabs + Notes timeline */}
       <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         {/* Day sidebar */}
@@ -1232,7 +1309,11 @@ export const TradingNotesSection = ({ onTickerClick }) => {
           {filteredNotesByDate.length === 0 ? (
             <div className="card flex items-center justify-center" style={{ height: '100px' }}>
               <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>
-                {notesByDate.length === 0 ? 'No notes yet. Add your first note above.' : 'No notes for this day.'}
+                {notesByDate.length === 0
+                  ? 'No notes yet. Add your first note above.'
+                  : selectedTicker
+                  ? `No notes tagged $${selectedTicker}${selectedDate ? ' for this day' : ''}.`
+                  : 'No notes for this day.'}
               </span>
             </div>
           ) : (

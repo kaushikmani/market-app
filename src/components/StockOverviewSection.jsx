@@ -217,6 +217,19 @@ export const StockOverviewSection = ({ data, loading, error }) => {
   const changeBg = isPositive ? Theme.colors.bullishGreenBg : Theme.colors.bearishRedBg;
   const changeBorder = isPositive ? Theme.colors.bullishGreenBorder : Theme.colors.bearishRedBorder;
 
+  // Parse 52W high/low and compute position
+  const w52High = parseFloat((data.fundamentals?.['52W High'] || '').replace(/[^0-9.]/g, '')) || null;
+  const w52Low = parseFloat((data.fundamentals?.['52W Low'] || '').replace(/[^0-9.]/g, '')) || null;
+  const currentPrice = parseFloat(String(data.price || '').replace(/[^0-9.]/g, '')) || null;
+
+  const w52Position = (w52High && w52Low && currentPrice && w52High > w52Low)
+    ? Math.max(0, Math.min(100, ((currentPrice - w52Low) / (w52High - w52Low)) * 100))
+    : null;
+
+  const pctFrom52High = (w52High && currentPrice)
+    ? ((currentPrice - w52High) / w52High) * 100
+    : null;
+
   const fundEntries = Object.entries(data.fundamentals || {});
   const priorityKeys = ['Market Cap', 'P/E', 'EPS (ttm)', 'PEG', 'P/B', 'Dividend %', 'ROE', 'Debt/Eq', 'Target Price', '52W Range', 'Beta', 'Avg Volume'];
   // Find earnings key (may have tooltip artifacts from Finviz)
@@ -363,6 +376,110 @@ export const StockOverviewSection = ({ data, loading, error }) => {
             {sortedFunds.map(([label, value]) => (
               <FundamentalItem key={label} label={label} value={value} />
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* 52W Range card */}
+      {(w52High || w52Low) && (
+        <div className="card" style={{ padding: '12px 16px' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '10px',
+          }}>
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              color: Theme.colors.tertiaryText,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}>
+              52W Range
+            </span>
+            {pctFrom52High !== null && (
+              <span style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: Theme.radius.full,
+                background: Theme.colors.bearishRedBg,
+                color: Theme.colors.bearishRed,
+                border: `1px solid ${Theme.colors.bearishRedBorder}`,
+                fontFamily: 'var(--font-mono)',
+              }}>
+                {pctFrom52High.toFixed(1)}% from 52W high
+              </span>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {w52Position !== null && (
+            <div style={{ position: 'relative', marginBottom: '8px' }}>
+              <div style={{
+                height: '6px',
+                borderRadius: Theme.radius.full,
+                background: Theme.colors.cardBorder,
+                position: 'relative',
+                overflow: 'visible',
+              }}>
+                {/* Filled portion */}
+                <div style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  height: '100%',
+                  width: `${w52Position}%`,
+                  borderRadius: Theme.radius.full,
+                  background: `linear-gradient(to right, ${Theme.colors.bullishGreen}, ${Theme.colors.accentBlue})`,
+                }} />
+                {/* Current price marker */}
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: `${w52Position}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: Theme.colors.primaryText,
+                  border: `2px solid ${Theme.colors.cardBackground}`,
+                  boxShadow: `0 0 0 1px ${Theme.colors.accentBlue}`,
+                  zIndex: 1,
+                }} />
+              </div>
+            </div>
+          )}
+
+          {/* Low / High labels */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ fontSize: '9px', color: Theme.colors.tertiaryText, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                52W Low
+              </span>
+              <span className="tabular-nums" style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.bullishGreen }}>
+                {w52Low ? `$${w52Low.toFixed(2)}` : '-'}
+              </span>
+            </div>
+            {currentPrice && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                <span style={{ fontSize: '9px', color: Theme.colors.tertiaryText, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Current
+                </span>
+                <span className="tabular-nums" style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText }}>
+                  ${currentPrice.toFixed(2)}
+                </span>
+              </div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+              <span style={{ fontSize: '9px', color: Theme.colors.tertiaryText, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                52W High
+              </span>
+              <span className="tabular-nums" style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.bearishRed }}>
+                {w52High ? `$${w52High.toFixed(2)}` : '-'}
+              </span>
+            </div>
           </div>
         </div>
       )}
