@@ -44,10 +44,11 @@ const InlineTickerInput = ({ onSubmit, onCancel }) => {
   );
 };
 
-const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, isExpanded, onToggle, onAddTicker, onRemoveTicker, onRemoveCategory, prices }) => {
+const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, isExpanded, onToggle, onAddTicker, onRemoveTicker, onRemoveCategory, onMoveTicker, otherCategories, prices, canMoveUp, canMoveDown, onMoveUp, onMoveDown }) => {
   const [hovered, setHovered] = useState(false);
   const [hoveredTicker, setHoveredTicker] = useState(null);
   const [showInput, setShowInput] = useState(false);
+  const [moveMenuTicker, setMoveMenuTicker] = useState(null);
 
   return (
     <div style={{ marginBottom: '2px' }}>
@@ -76,16 +77,24 @@ const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, 
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           {hovered && (
             <>
+              {canMoveUp && (
+                <span onClick={e => { e.stopPropagation(); onMoveUp(); }} title="Move up"
+                  style={{ fontSize: '10px', lineHeight: 1, color: Theme.colors.tertiaryText, opacity: 0.7, cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = Theme.colors.primaryText; }}
+                  onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; e.currentTarget.style.color = Theme.colors.tertiaryText; }}
+                >↑</span>
+              )}
+              {canMoveDown && (
+                <span onClick={e => { e.stopPropagation(); onMoveDown(); }} title="Move down"
+                  style={{ fontSize: '10px', lineHeight: 1, color: Theme.colors.tertiaryText, opacity: 0.7, cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = Theme.colors.primaryText; }}
+                  onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; e.currentTarget.style.color = Theme.colors.tertiaryText; }}
+                >↓</span>
+              )}
               <span
                 onClick={e => { e.stopPropagation(); setShowInput(s => !s); }}
                 title="Add ticker"
-                style={{
-                  fontSize: '13px',
-                  lineHeight: 1,
-                  color: Theme.colors.accentBlue,
-                  opacity: 0.7,
-                  cursor: 'pointer',
-                }}
+                style={{ fontSize: '13px', lineHeight: 1, color: Theme.colors.accentBlue, opacity: 0.7, cursor: 'pointer' }}
                 onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
                 onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; }}
               >+</span>
@@ -93,13 +102,7 @@ const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, 
                 <span
                   onClick={e => { e.stopPropagation(); onRemoveCategory(); }}
                   title="Delete category"
-                  style={{
-                    fontSize: '12px',
-                    lineHeight: 1,
-                    color: Theme.colors.bearishRed,
-                    opacity: 0.7,
-                    cursor: 'pointer',
-                  }}
+                  style={{ fontSize: '12px', lineHeight: 1, color: Theme.colors.bearishRed, opacity: 0.7, cursor: 'pointer' }}
                   onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
                   onMouseLeave={e => { e.currentTarget.style.opacity = '0.7'; }}
                 >&times;</span>
@@ -165,22 +168,51 @@ const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, 
                     onClick={e => { e.stopPropagation(); onChartClick(t); }}
                     title="Quick chart"
                     style={{ fontSize: '9px', lineHeight: 1, opacity: 0.7, marginLeft: '1px' }}
-                  >
-                    📈
-                  </span>
+                  >📈</span>
+                )}
+                {isHovered && !isActive && otherCategories.length > 0 && (
+                  <span
+                    onClick={e => { e.stopPropagation(); setMoveMenuTicker(moveMenuTicker === t ? null : t); }}
+                    title="Move to section"
+                    style={{ fontSize: '9px', lineHeight: 1, opacity: 0.7, marginLeft: '1px', cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
+                  >⇄</span>
                 )}
                 {isHovered && !isActive && (
                   <span
                     onClick={e => { e.stopPropagation(); onRemoveTicker(t); }}
                     title="Remove"
-                    style={{
-                      fontSize: '11px',
-                      lineHeight: 1,
-                      color: Theme.colors.bearishRed,
-                      marginLeft: '1px',
-                      opacity: 0.8,
-                    }}
+                    style={{ fontSize: '11px', lineHeight: 1, color: Theme.colors.bearishRed, marginLeft: '1px', opacity: 0.8 }}
                   >&times;</span>
+                )}
+                {moveMenuTicker === t && (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                      background: Theme.colors.cardBackground,
+                      border: `1px solid ${Theme.colors.cardBorder}`,
+                      borderRadius: Theme.radius.sm,
+                      padding: '4px 0',
+                      minWidth: '140px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                      marginTop: '2px',
+                    }}
+                  >
+                    <div style={{ padding: '4px 10px 6px', fontSize: '8px', color: Theme.colors.tertiaryText, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 700 }}>
+                      Move to
+                    </div>
+                    {otherCategories.map(cat => (
+                      <div
+                        key={cat}
+                        onClick={() => { onMoveTicker(t, cat); setMoveMenuTicker(null); }}
+                        style={{ padding: '5px 10px', fontSize: '10px', color: Theme.colors.secondaryText, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = Theme.colors.accentBlueDim; e.currentTarget.style.color = Theme.colors.primaryText; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = Theme.colors.secondaryText; }}
+                      >{cat}</div>
+                    ))}
+                  </div>
                 )}
               </div>
             );
@@ -240,7 +272,7 @@ const NewCategoryInput = ({ onSubmit, onCancel }) => {
 };
 
 export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) => {
-  const { watchlist, addTicker, removeTicker, addCategory, removeCategory, resetAll } = useEditableWatchlist();
+  const { watchlist, addTicker, removeTicker, moveTicker, addCategory, removeCategory, reorderCategories, resetAll } = useEditableWatchlist();
   const { prices } = useWatchlistPrices();
   const [expanded, setExpanded] = useState(() => {
     const init = {};
@@ -334,7 +366,13 @@ export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) 
             onAddTicker={(ticker) => addTicker(cat.name, ticker)}
             onRemoveTicker={(ticker) => removeTicker(cat.name, ticker)}
             onRemoveCategory={() => removeCategory(cat.name)}
+            onMoveTicker={(ticker, toCategory) => moveTicker(cat.name, ticker, toCategory)}
+            otherCategories={watchlist.filter((_, j) => j !== i).map(c => c.name)}
             prices={prices}
+            canMoveUp={i > 0}
+            canMoveDown={i < watchlist.length - 1}
+            onMoveUp={() => reorderCategories(i, i - 1)}
+            onMoveDown={() => reorderCategories(i, i + 1)}
           />
         ))}
 

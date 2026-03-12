@@ -135,11 +135,87 @@ export function useEditableWatchlist() {
     }));
   }, [updateEdits]);
 
+  const moveTicker = useCallback((fromCategory, ticker, toCategory) => {
+    if (fromCategory === toCategory) return;
+    updateEdits(prev => {
+      let next = prev;
+
+      // Remove from source
+      const customFromIdx = (next.customCategories || []).findIndex(c => c.name === fromCategory);
+      if (customFromIdx !== -1) {
+        const custom = [...next.customCategories];
+        custom[customFromIdx] = { ...custom[customFromIdx], tickers: custom[customFromIdx].tickers.filter(t => t !== ticker) };
+        next = { ...next, customCategories: custom };
+      } else {
+        const added = { ...next.added };
+        if (added[fromCategory]) {
+          added[fromCategory] = added[fromCategory].filter(t => t !== ticker);
+          if (!added[fromCategory].length) delete added[fromCategory];
+        }
+        const baseCat = WATCHLIST.find(c => c.name === fromCategory);
+        if (baseCat && baseCat.tickers.includes(ticker)) {
+          const removed = { ...next.removed };
+          removed[fromCategory] = [...(removed[fromCategory] || []), ticker];
+          next = { ...next, added, removed };
+        } else {
+          next = { ...next, added };
+        }
+      }
+
+      // Add to destination
+      const customToIdx = (next.customCategories || []).findIndex(c => c.name === toCategory);
+      if (customToIdx !== -1) {
+        const custom = [...next.customCategories];
+        const cat = { ...custom[customToIdx], tickers: [...custom[customToIdx].tickers] };
+        if (!cat.tickers.includes(ticker)) cat.tickers.push(ticker);
+        custom[customToIdx] = cat;
+        next = { ...next, customCategories: custom };
+      } else {
+        const removed = { ...next.removed };
+        if (removed[toCategory]) {
+          removed[toCategory] = removed[toCategory].filter(t => t !== ticker);
+          if (!removed[toCategory].length) delete removed[toCategory];
+        }
+        const baseCat = WATCHLIST.find(c => c.name === toCategory);
+        if (baseCat && baseCat.tickers.includes(ticker)) {
+          next = { ...next, removed };
+        } else {
+          const added = { ...next.added };
+          added[toCategory] = [...(added[toCategory] || [])];
+          if (!added[toCategory].includes(ticker)) added[toCategory].push(ticker);
+          next = { ...next, added, removed };
+        }
+      }
+
+      return next;
+    });
+  }, [updateEdits]);
+
+  const reorderCategories = useCallback((fromIdx, toIdx) => {
+    updateEdits(prev => {
+      const baseNames = WATCHLIST.map(c => c.name);
+      const customNames = (prev.customCategories || []).map(c => c.name);
+      const allNames = [...baseNames, ...customNames];
+      const current = prev.categoryOrder || allNames;
+      const reordered = [...current];
+      const [moved] = reordered.splice(fromIdx, 1);
+      reordered.splice(toIdx, 0, moved);
+      return { ...prev, categoryOrder: reordered };
+    });
+  }, [updateEdits]);
+
+  const orderedWatchlist = useMemo(() => {
+    const order = edits.categoryOrder;
+    if (!order) return watchlist;
+    const map = Object.fromEntries(watchlist.map(c => [c.name, c]));
+    return order.map(name => map[name]).filter(Boolean);
+  }, [watchlist, edits.categoryOrder]);
+
   const resetAll = useCallback(() => {
     const defaults = getDefaultEdits();
     saveEdits(defaults);
     setEdits(defaults);
   }, []);
 
-  return { watchlist, addTicker, removeTicker, addCategory, removeCategory, resetAll };
+  return { watchlist: orderedWatchlist, addTicker, removeTicker, moveTicker, addCategory, removeCategory, reorderCategories, resetAll };
 }
