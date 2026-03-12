@@ -3,6 +3,23 @@ import { Theme } from '../models/Theme';
 import { useEditableWatchlist } from '../hooks/useEditableWatchlist';
 import { useWatchlistPrices } from '../hooks/useWatchlistPrices';
 
+const FLASH_KEYFRAMES = `
+@keyframes flashUp {
+  0%   { background-color: rgba(0, 214, 143, 0.30); }
+  100% { background-color: transparent; }
+}
+@keyframes flashDown {
+  0%   { background-color: rgba(255, 92, 92, 0.30); }
+  100% { background-color: transparent; }
+}
+[data-flash="up"] {
+  animation: flashUp 0.6s ease-out forwards;
+}
+[data-flash="down"] {
+  animation: flashDown 0.6s ease-out forwards;
+}
+`;
+
 const InlineTickerInput = ({ onSubmit, onCancel }) => {
   const [value, setValue] = useState('');
   const inputRef = useRef(null);
@@ -44,7 +61,7 @@ const InlineTickerInput = ({ onSubmit, onCancel }) => {
   );
 };
 
-const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, isExpanded, onToggle, onAddTicker, onRemoveTicker, onRemoveCategory, onMoveTicker, otherCategories, prices, canMoveUp, canMoveDown, onMoveUp, onMoveDown }) => {
+const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, isExpanded, onToggle, onAddTicker, onRemoveTicker, onRemoveCategory, onMoveTicker, otherCategories, prices, flashMap, canMoveUp, canMoveDown, onMoveUp, onMoveDown }) => {
   const [hovered, setHovered] = useState(false);
   const [hoveredTicker, setHoveredTicker] = useState(null);
   const [showInput, setShowInput] = useState(false);
@@ -128,9 +145,11 @@ const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, 
           {category.tickers.map(t => {
             const isActive = t === activeTicker;
             const isHovered = hoveredTicker === t;
+            const flash = flashMap?.[t];
             return (
               <div
                 key={t}
+                data-flash={flash || undefined}
                 onMouseEnter={() => setHoveredTicker(t)}
                 onMouseLeave={() => setHoveredTicker(null)}
                 style={{
@@ -274,12 +293,34 @@ const NewCategoryInput = ({ onSubmit, onCancel }) => {
 export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) => {
   const { watchlist, addTicker, removeTicker, moveTicker, addCategory, removeCategory, reorderCategories, resetAll } = useEditableWatchlist();
   const { prices } = useWatchlistPrices();
+  const prevPricesRef = useRef({});
+  const [flashMap, setFlashMap] = useState({});
   const [expanded, setExpanded] = useState(() => {
     const init = {};
     watchlist.forEach((_, i) => { init[i] = i < 3; });
     return init;
   });
   const [showNewCategory, setShowNewCategory] = useState(false);
+
+  // Detect price changes and set flash state
+  useEffect(() => {
+    const prev = prevPricesRef.current;
+    const newFlash = {};
+    for (const ticker of Object.keys(prices)) {
+      const currPrice = prices[ticker]?.price;
+      const prevPrice = prev[ticker]?.price;
+      if (prevPrice != null && currPrice != null && currPrice !== prevPrice) {
+        newFlash[ticker] = currPrice > prevPrice ? 'up' : 'down';
+      }
+    }
+    prevPricesRef.current = prices;
+    if (Object.keys(newFlash).length > 0) {
+      setFlashMap(newFlash);
+      // Clear flash after animation completes
+      const timer = setTimeout(() => setFlashMap({}), 700);
+      return () => clearTimeout(timer);
+    }
+  }, [prices]);
 
   const toggleCategory = (idx) => {
     setExpanded(prev => ({ ...prev, [idx]: !prev[idx] }));
@@ -369,6 +410,7 @@ export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) 
             onMoveTicker={(ticker, toCategory) => moveTicker(cat.name, ticker, toCategory)}
             otherCategories={watchlist.filter((_, j) => j !== i).map(c => c.name)}
             prices={prices}
+            flashMap={flashMap}
             canMoveUp={i > 0}
             canMoveDown={i < watchlist.length - 1}
             onMoveUp={() => reorderCategories(i, i - 1)}
@@ -425,6 +467,8 @@ export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) 
           onMouseLeave={e => { e.currentTarget.style.color = Theme.colors.tertiaryText; }}
         >RESET TO DEFAULTS</span>
       </div>
+
+      <style>{FLASH_KEYFRAMES}</style>
     </div>
   );
 };

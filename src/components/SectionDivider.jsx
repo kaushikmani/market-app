@@ -10,17 +10,18 @@ export const SectionDivider = ({ title, subtitle }) => (
     }} />
     <div className="flex items-baseline gap-3">
       <h2 style={{
-        fontSize: '14px',
-        fontWeight: 700,
-        color: Theme.colors.primaryText,
-        letterSpacing: '0.02em',
+        fontSize: 'var(--text-sm)',
+        fontWeight: 'var(--font-weight-bold)',
+        color: Theme.colors.secondaryText,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
       }}>
         {title}
       </h2>
       {subtitle && (
         <span style={{
-          fontSize: '11px',
-          fontWeight: 500,
+          fontSize: 'var(--text-xs)',
+          fontWeight: 'var(--font-weight-normal)',
           color: Theme.colors.tertiaryText,
         }}>
           {subtitle}

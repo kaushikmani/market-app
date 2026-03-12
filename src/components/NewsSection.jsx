@@ -105,8 +105,7 @@ export const NewsSection = ({ data, loading, error }) => {
   if (!data || !data.articles || data.articles.length === 0) {
     return (
       <div className="card flex flex-col items-center justify-center" style={{ height: '140px' }}>
-        <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>No news available</span>
-        <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText, marginTop: '4px' }}>Start the backend server to fetch live data</span>
+        <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>No market news at this time — check back closer to market open</span>
       </div>
     );
   }

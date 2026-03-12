@@ -496,7 +496,9 @@ export function TodaysSetupsSection({ data, loading, error, onTickerClick }) {
         ) : filtered.length === 0 ? (
           <div className="card" style={{ padding: '24px', textAlign: 'center' }}>
             <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>
-              No setups found{filter !== 'all' ? ' for this filter' : ' today'}
+              {filter !== 'all'
+                ? `No ${filter} setups detected — try a different filter`
+                : 'No setups detected — watchlist stocks are in consolidation or no clear signals today'}
             </span>
           </div>
         ) : (

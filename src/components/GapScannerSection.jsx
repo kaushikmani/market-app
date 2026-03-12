@@ -208,7 +208,9 @@ export function GapScannerSection({ onTickerClick }) {
         </div>
       ) : activeList.length === 0 ? (
         <div style={{ padding: '24px', textAlign: 'center', color: Theme.colors.secondaryText, fontSize: '12px' }}>
-          {activeTab === 'up' ? 'No gap ups ≥ 2% found' : 'No gap downs ≤ -2% found'}
+          {activeTab === 'up'
+            ? 'Market opened flat — no gaps ≥ 2% in watchlist'
+            : 'No notable gap downs — watchlist holding steady'}
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
