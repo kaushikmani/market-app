@@ -25,6 +25,12 @@ export const ApiService = {
   getEarningsCalendar: () =>
     fetchJson(`${API_BASE}/earnings-calendar`),
 
+  getTriggeredAlerts: () =>
+    fetchJson(`${API_BASE}/alerts/triggered`),
+
+  dismissTriggeredAlert: (id) =>
+    fetch(`${API_BASE}/alerts/triggered/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json()),
+
   getAlerts: () =>
     fetchJson(`${API_BASE}/alerts`),
 
@@ -92,8 +98,14 @@ export const ApiService = {
   getNotes: (days = 5) =>
     fetchJson(`${API_BASE}/notes?days=${days}`),
 
+  getNotesByTicker: (ticker, days = 90) =>
+    fetchJson(`${API_BASE}/notes?ticker=${encodeURIComponent(ticker)}&days=${days}`),
+
   getBrief: () =>
     fetchJson(`${API_BASE}/notes/brief`),
+
+  getGamePlan: () =>
+    fetchJson(`${API_BASE}/notes/gameplan`),
 
   askNotes: (question, days = 21) =>
     fetch(`${API_BASE}/notes/ask`, {
@@ -108,6 +120,9 @@ export const ApiService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(r => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); }),
+
+  getTranscriptionStatus: (jobId) =>
+    fetchJson(`${API_BASE}/notes/transcription-status/${encodeURIComponent(jobId)}`),
 
   uploadAudio: (file, title) => {
     const formData = new FormData();

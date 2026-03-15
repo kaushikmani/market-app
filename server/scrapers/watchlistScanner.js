@@ -188,6 +188,124 @@ function detectVolumeSurge(bars, avgVolume) {
   return null;
 }
 
+// ── Setup: Downtrend Break (price breaks above descending trendline of swing highs) ──
+function detectDowntrendBreak(bars, price) {
+  if (!bars || bars.length < 10 || price == null) return null;
+
+  // Find swing highs in bars[1..29] (exclude today so we can check if today broke it)
+  // bars[0]=today, bars[1]=yesterday, bars[N]=older; so bars[i].high > bars[i+1].high && bars[i].high > bars[i-1].high
+  const swingHighs = [];
+  for (let i = 1; i < Math.min(bars.length - 1, 30); i++) {
+    const prev = bars[i + 1]; // older bar
+    const curr = bars[i];
+    const next = bars[i - 1]; // more recent bar
+    if (curr.high != null && prev?.high != null && next?.high != null &&
+        curr.high > prev.high && curr.high > next.high) {
+      swingHighs.push({ idx: i, high: curr.high });
+    }
+  }
+
+  if (swingHighs.length < 2) return null;
+
+  // Find two swing highs that form a descending line (older high > newer high)
+  // swingHighs are sorted by idx ascending (smallest idx = most recent)
+  let h1 = null, h2 = null; // h1 = older, h2 = more recent
+  for (let i = 0; i < swingHighs.length - 1; i++) {
+    for (let j = i + 1; j < swingHighs.length; j++) {
+      // swingHighs[j].idx > swingHighs[i].idx → j is older
+      if (swingHighs[j].high > swingHighs[i].high) {
+        h2 = swingHighs[i]; // more recent (smaller idx)
+        h1 = swingHighs[j]; // older (larger idx)
+        break;
+      }
+    }
+    if (h1) break;
+  }
+
+  if (!h1 || !h2) return null;
+
+  // Extrapolate trendline to today (idx=0) and yesterday (idx=1)
+  // Line through (h1.idx, h1.high) and (h2.idx, h2.high)
+  const slope = (h2.high - h1.high) / (h2.idx - h1.idx); // negative = descending
+  const trendlineToday = h1.high + slope * (0 - h1.idx);
+  const trendlineYesterday = h1.high + slope * (1 - h1.idx);
+
+  // Require: yesterday was at or below the trendline (fresh break today)
+  const prevClose = bars[1]?.close;
+  if (prevClose == null || prevClose > trendlineYesterday * 1.005) return null;
+
+  // Today's price broke above
+  if (price > trendlineToday) {
+    const pctAbove = ((price - trendlineToday) / trendlineToday * 100).toFixed(1);
+    return {
+      type: 'downtrend_break',
+      priority: 3,
+      label: 'Downtrend Break',
+      description: `Broke above descending trendline at $${trendlineToday.toFixed(2)} — ${pctAbove}% above, trendline from ${h1.idx}–${h2.idx} bars ago`,
+      metrics: { trendlineLevel: trendlineToday.toFixed(2), pctAbove: `${pctAbove}%`, barsBack: `${h1.idx}–${h2.idx}` },
+    };
+  }
+  return null;
+}
+
+// ── Setup: Uptrend Break (price breaks below ascending trendline of swing lows) ──
+function detectUptrendBreak(bars, price) {
+  if (!bars || bars.length < 10 || price == null) return null;
+
+  // Find swing lows in bars[1..29] (exclude today)
+  // bars[i].low < bars[i+1].low && bars[i].low < bars[i-1].low
+  const swingLows = [];
+  for (let i = 1; i < Math.min(bars.length - 1, 30); i++) {
+    const prev = bars[i + 1]; // older bar
+    const curr = bars[i];
+    const next = bars[i - 1]; // more recent bar
+    if (curr.low != null && prev?.low != null && next?.low != null &&
+        curr.low < prev.low && curr.low < next.low) {
+      swingLows.push({ idx: i, low: curr.low });
+    }
+  }
+
+  if (swingLows.length < 2) return null;
+
+  // Find two swing lows that form an ascending line (older low < newer low)
+  let h1 = null, h2 = null; // h1 = older, h2 = more recent
+  for (let i = 0; i < swingLows.length - 1; i++) {
+    for (let j = i + 1; j < swingLows.length; j++) {
+      // swingLows[j].idx > swingLows[i].idx → j is older
+      if (swingLows[j].low < swingLows[i].low) {
+        h2 = swingLows[i]; // more recent (smaller idx, higher low)
+        h1 = swingLows[j]; // older (larger idx, lower low)
+        break;
+      }
+    }
+    if (h1) break;
+  }
+
+  if (!h1 || !h2) return null;
+
+  // Extrapolate trendline to today (idx=0) and yesterday (idx=1)
+  const slope = (h2.low - h1.low) / (h2.idx - h1.idx); // positive = ascending
+  const trendlineToday = h1.low + slope * (0 - h1.idx);
+  const trendlineYesterday = h1.low + slope * (1 - h1.idx);
+
+  // Require: yesterday was at or above the trendline (fresh break today)
+  const prevClose = bars[1]?.close;
+  if (prevClose == null || prevClose < trendlineYesterday * 0.995) return null;
+
+  // Today's price broke below
+  if (price < trendlineToday) {
+    const pctBelow = ((trendlineToday - price) / trendlineToday * 100).toFixed(1);
+    return {
+      type: 'uptrend_break',
+      priority: 4,
+      label: 'Uptrend Break',
+      description: `Broke below ascending trendline at $${trendlineToday.toFixed(2)} — ${pctBelow}% below, trendline from ${h1.idx}–${h2.idx} bars ago`,
+      metrics: { trendlineLevel: trendlineToday.toFixed(2), pctBelow: `${pctBelow}%`, barsBack: `${h1.idx}–${h2.idx}` },
+    };
+  }
+  return null;
+}
+
 // ── Chart Pattern Detection (badge-level signals) ──
 function detectPatterns(bars, smas, rsi, avgVolume) {
   const patterns = [];
@@ -617,29 +735,17 @@ export async function scanWatchlist() {
       scanned++;
       const setups = [];
 
-      const singleInside = detectInsideDay(data.bars);
-      if (singleInside) setups.push(singleInside);
-
-      const breakout = detectStage2Breakout(data.price, data.smas, data.weekHigh52);
-      if (breakout) setups.push(breakout);
-
-      const overextended = detectOverextended(data.price, data.smas);
-      if (overextended) setups.push(overextended);
+      const leader810Buy = detectLeader810dBuy(data.ticker, data.price, data.smas);
+      if (leader810Buy) setups.push(leader810Buy);
 
       const retest = detectBreakoutRetest(data.bars, data.price, data.smas, data.weekHigh52);
       if (retest) setups.push(retest);
 
-      const breakdown = detectBreakdown(data.price, data.prevClose, data.smas);
-      if (breakdown) setups.push(breakdown);
+      const downtrendBreak = detectDowntrendBreak(data.bars, data.price);
+      if (downtrendBreak) setups.push(downtrendBreak);
 
-      const leader810Buy = detectLeader810dBuy(data.ticker, data.price, data.smas);
-      if (leader810Buy) setups.push(leader810Buy);
-
-      const rsiOversold = detectRSIOversold(data.rsi, data.price);
-      if (rsiOversold) setups.push(rsiOversold);
-
-      const rsiOverbought = detectRSIOverbought(data.rsi, data.price);
-      if (rsiOverbought) setups.push(rsiOverbought);
+      const uptrendBreak = detectUptrendBreak(data.bars, data.price);
+      if (uptrendBreak) setups.push(uptrendBreak);
 
       const volSurge = detectVolumeSurge(data.bars, data.avgVolume);
       if (volSurge) setups.push(volSurge);

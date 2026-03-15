@@ -7,7 +7,7 @@ const CONDITIONS = [
   { value: 'cross_above_sma',label: 'Cross Above SMA', hasPeriod: true,  hasThr: false },
   { value: 'cross_below_sma',label: 'Cross Below SMA', hasPeriod: true,  hasThr: false },
   { value: 'price_above',    label: 'Price Above $',   hasPeriod: false, hasThr: true,  thrLabel: 'price $' },
-  { value: 'price_below',    label: 'Price Below $',   hasпериод: false, hasThr: true,  thrLabel: 'price $' },
+  { value: 'price_below',    label: 'Price Below $',   hasPeriod: false, hasThr: true,  thrLabel: 'price $' },
 ];
 
 function timeAgo(ts) {

@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { polygonGet } from '../services/polygon.js';
+import { getQuotes, getPriceHistory } from './schwab.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ALERTS_FILE  = path.join(__dirname, '../data/alerts.json');
-const STATE_FILE   = path.join(__dirname, '../data/alert-state.json');
+const __dirname   = path.dirname(fileURLToPath(import.meta.url));
+const ALERTS_FILE = path.join(__dirname, '../data/alerts.json');
+const STATE_FILE  = path.join(__dirname, '../data/alert-state.json');
 
 // ── Market hours check (9:30am–4pm ET, Mon-Fri) ──────────────────────────────
 function isMarketHours() {
@@ -13,30 +13,23 @@ function isMarketHours() {
   const et  = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const day = et.getDay();
   if (day === 0 || day === 6) return false;
-  const h = et.getHours();
-  const m = et.getMinutes();
-  const mins = h * 60 + m;
-  return mins >= 9 * 60 + 30 && mins < 16 * 60; // 9:30am–4pm
+  const mins = et.getHours() * 60 + et.getMinutes();
+  return mins >= 9 * 60 + 30 && mins < 16 * 60;
 }
 
-// ── Fetch price + SMA via Polygon ────────────────────────────────────────────
+// ── Fetch price + SMAs via Schwab ─────────────────────────────────────────────
 async function fetchQuote(ticker) {
   try {
-    const to   = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - 260 * 86400000).toISOString().slice(0, 10);
-
-    const [snap, aggs] = await Promise.all([
-      polygonGet('/v2/snapshot/locale/us/markets/stocks/tickers', { tickers: ticker }),
-      polygonGet(`/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${from}/${to}`, {
-        adjusted: true, sort: 'asc', limit: 220,
-      }),
+    const [quotesMap, candles] = await Promise.all([
+      getQuotes([ticker]),
+      getPriceHistory(ticker, { days: 260 }),
     ]);
 
-    const t = snap.tickers?.[0];
-    const price = t?.lastTrade?.p || t?.day?.c;
+    const q = quotesMap[ticker.toUpperCase()];
+    const price = q?.price;
     if (!price) return null;
 
-    const closes = (aggs.results || []).map(r => r.c).filter(c => c != null).reverse();
+    const closes = candles.map(r => r.c).filter(c => c != null).reverse();
     if (closes.length < 50) return null;
 
     const smas = {};
@@ -54,13 +47,8 @@ async function fetchQuote(ticker) {
 
 // ── Load / save state ────────────────────────────────────────────────────────
 function loadState() {
-  try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')); } catch { return {}; }
 }
-
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
@@ -80,7 +68,6 @@ function checkAlert(alert, quote, state) {
   let message   = '';
 
   if (condition === 'near_sma') {
-    // Within threshold% of the SMA (either side)
     triggered = absPct <= threshold;
     if (triggered) {
       const side = price >= sma ? 'above' : 'below';
@@ -109,40 +96,39 @@ function checkAlert(alert, quote, state) {
   return { triggered, message };
 }
 
+// ── In-process queue of recent triggers (last 20) for frontend polling ────────
+const recentTriggers = [];
+export function getRecentTriggers() { return recentTriggers.slice(); }
+export function clearTrigger(id) {
+  const idx = recentTriggers.findIndex(t => t.id === id);
+  if (idx !== -1) recentTriggers.splice(idx, 1);
+}
+
 // ── Main run loop ─────────────────────────────────────────────────────────────
 export async function runAlertCheck() {
   if (!isMarketHours()) return;
 
   let alerts;
-  try {
-    alerts = JSON.parse(fs.readFileSync(ALERTS_FILE, 'utf-8'));
-  } catch {
-    return;
-  }
+  try { alerts = JSON.parse(fs.readFileSync(ALERTS_FILE, 'utf-8')); } catch { return; }
 
   const state   = loadState();
   const enabled = alerts.filter(a => a.enabled);
   if (enabled.length === 0) return;
 
-  // Group by ticker to avoid duplicate fetches
   const tickers = [...new Set(enabled.map(a => a.ticker))];
 
   for (const ticker of tickers) {
     const quote = await fetchQuote(ticker);
-    if (!quote) {
-      console.log(`[Alerts] No data for ${ticker}`);
-      continue;
-    }
+    if (!quote) { console.log(`[Alerts] No data for ${ticker}`); continue; }
 
     const tickerAlerts = enabled.filter(a => a.ticker === ticker);
 
     for (const alert of tickerAlerts) {
       const { id, cooldownHours } = alert;
-      const lastSent = state[id]?.lastSent;
-      const cooldownMs = (cooldownHours || 4) * 60 * 60 * 1000;
+      const lastSent    = state[id]?.lastSent;
+      const cooldownMs  = (cooldownHours || 4) * 60 * 60 * 1000;
 
       if (lastSent && Date.now() - lastSent < cooldownMs) {
-        // Still in cooldown
         state[id] = { ...state[id], lastPrice: quote.price };
         continue;
       }
@@ -152,6 +138,9 @@ export async function runAlertCheck() {
       if (result?.triggered) {
         console.log(`[Alerts] Triggered: ${result.message}`);
         state[id] = { lastSent: Date.now(), lastPrice: quote.price };
+        // Push to notification queue (cap at 20)
+        recentTriggers.push({ id: crypto.randomUUID(), alertId: id, ticker: alert.ticker, message: result.message, ts: Date.now() });
+        if (recentTriggers.length > 20) recentTriggers.shift();
       } else {
         state[id] = { ...(state[id] || {}), lastPrice: quote.price };
       }

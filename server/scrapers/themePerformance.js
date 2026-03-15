@@ -1,4 +1,4 @@
-import { polygonGet } from '../services/polygon.js';
+import { getQuotes, getPriceHistory } from '../services/schwab.js';
 
 const THEMES = [
   { name: 'Mega Cap Tech',          tickers: ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'] },
@@ -33,7 +33,6 @@ const THEMES = [
   { name: 'Meme & Speculative',     tickers: ['AMC', 'GME', 'PTON'] },
 ];
 
-// Returns N prior trading days ago as YYYY-MM-DD (skips weekends)
 function tradingDaysAgo(n) {
   const d = new Date();
   let count = 0;
@@ -41,44 +40,21 @@ function tradingDaysAgo(n) {
     d.setDate(d.getDate() - 1);
     if (d.getDay() !== 0 && d.getDay() !== 6) count++;
   }
-  return d.toISOString().slice(0, 10);
+  return d;
 }
 
 function ytdStartDate() {
-  const d = new Date(new Date().getFullYear() - 1, 11, 31); // Dec 31 prev year
+  const d = new Date(new Date().getFullYear() - 1, 11, 31);
   while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return d;
 }
 
 const RANGE_TRADING_DAYS = { '2d': 2, '3d': 3, '1w': 5, '1m': 21, '3m': 63, '1y': 252 };
 
-// ── Polygon snapshots — all tickers in one call ─────────────────────────────
-async function fetchSnapshots(tickers) {
-  const data = await polygonGet('/v2/snapshot/locale/us/markets/stocks/tickers', {
-    tickers: tickers.join(','),
-  });
-  const map = {};
-  for (const t of data.tickers || []) map[t.ticker] = t;
-  return map;
-}
-
-// ── Polygon grouped daily — all stocks EOD in one call ──────────────────────
-async function fetchGroupedDaily(date) {
-  try {
-    const data = await polygonGet(`/v2/aggs/grouped/locale/us/market/stocks/${date}`, { adjusted: true });
-    const map = {};
-    for (const r of data.results || []) map[r.T] = r.c;
-    return map;
-  } catch (e) {
-    console.warn('[ThemePerf] Grouped daily failed for', date, e.message);
-    return {};
-  }
-}
-
 // Cache
-const cache = {};
+const cache     = {};
 const cacheTime = {};
-const TTL = { today: 2 * 60_000, historical: 30 * 60_000 };
+const TTL       = { today: 2 * 60_000, historical: 30 * 60_000 };
 
 export async function fetchThemePerformance(range = 'today') {
   const now = Date.now();
@@ -86,41 +62,47 @@ export async function fetchThemePerformance(range = 'today') {
   if (cache[range] && now - (cacheTime[range] || 0) < ttl) return cache[range];
 
   const allTickers = [...new Set(THEMES.flatMap(t => t.tickers))];
-  const snapshots = await fetchSnapshots(allTickers);
 
-  let priceMap = null; // start-of-period prices for historical
+  // Always fetch current quotes in one batch call
+  const quotes = await getQuotes(allTickers);
 
+  // For historical ranges, fetch start-date close prices
+  let startPriceMap = null;
   if (range !== 'today') {
-    let startDate = range === 'ytd' ? ytdStartDate() : tradingDaysAgo(RANGE_TRADING_DAYS[range] ?? 5);
-    priceMap = await fetchGroupedDaily(startDate);
-    // Fallback: try 1 more day back if holiday (empty result)
-    if (Object.keys(priceMap).length === 0) {
-      const d = new Date(startDate);
-      d.setDate(d.getDate() - 1);
-      if (d.getDay() === 0) d.setDate(d.getDate() - 2);
-      if (d.getDay() === 6) d.setDate(d.getDate() - 1);
-      priceMap = await fetchGroupedDaily(d.toISOString().slice(0, 10));
+    const startDate = range === 'ytd' ? ytdStartDate() : tradingDaysAgo(RANGE_TRADING_DAYS[range] ?? 5);
+    const startMs   = startDate.getTime();
+    const endMs     = startDate.getTime() + 3 * 86400_000; // include a few days forward to handle holidays
+
+    // Batch fetch price history for all tickers (parallel, but in chunks to be safe)
+    startPriceMap = {};
+    const CHUNK = 50;
+    for (let i = 0; i < allTickers.length; i += CHUNK) {
+      const chunk = allTickers.slice(i, i + CHUNK);
+      await Promise.all(chunk.map(async (ticker) => {
+        try {
+          const candles = await getPriceHistory(ticker, { days: 1, startDate: startMs, endDate: endMs });
+          if (candles.length > 0) startPriceMap[ticker] = candles[0].c;
+        } catch { /* skip on error */ }
+      }));
     }
   }
 
   const themes = THEMES.map(theme => {
     const stocks = theme.tickers.map(sym => {
-      const snap = snapshots[sym];
-      if (!snap) return null;
-      const price = snap.lastTrade?.p || snap.day?.c || snap.prevDay?.c;
-      if (!price) return null;
+      const q = quotes[sym];
+      if (!q?.price) return null;
 
       let changePct;
       if (range === 'today') {
-        changePct = snap.todaysChangePerc;
+        changePct = q.changePct;
         if (changePct == null) return null;
       } else {
-        const startPrice = priceMap?.[sym];
+        const startPrice = startPriceMap?.[sym];
         if (!startPrice) return null;
-        changePct = ((price - startPrice) / startPrice) * 100;
+        changePct = ((q.price - startPrice) / startPrice) * 100;
       }
 
-      return { symbol: sym, price, changePct: Math.round(changePct * 100) / 100 };
+      return { symbol: sym, price: q.price, changePct: Math.round(changePct * 100) / 100 };
     }).filter(Boolean);
 
     if (stocks.length === 0) return null;
@@ -129,7 +111,7 @@ export async function fetchThemePerformance(range = 'today') {
   }).filter(Boolean);
 
   const result = { themes, range, updatedAt: new Date().toLocaleTimeString() };
-  cache[range] = result;
+  cache[range]     = result;
   cacheTime[range] = now;
   return result;
 }

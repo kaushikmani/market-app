@@ -685,7 +685,16 @@ const NotesChat = () => {
   );
 };
 
-const AddNoteForm = ({ onSubmit, uploading, onUpload, onUploadImages }) => {
+const AUDIO_STAGES = ['transcribing', 'extracting', 'summarizing', 'saving'];
+const STAGE_LABELS = {
+  transcribing: 'Transcribing audio...',
+  extracting: 'Extracting tickers...',
+  summarizing: 'Summarizing...',
+  saving: 'Saving note...',
+  done: 'Done!',
+};
+
+const AddNoteForm = ({ onSubmit, uploading, uploadStage, uploadProgress, onUpload, onUploadImages }) => {
   const [mode, setMode] = useState('text');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -1004,20 +1013,62 @@ const AddNoteForm = ({ onSubmit, uploading, onUpload, onUploadImages }) => {
             onChange={e => handleFile(e.target.files[0])}
           />
           {uploading ? (
-            <div className="flex flex-col items-center gap-2">
-              <div style={{
-                width: '20px',
-                height: '20px',
-                border: `2px solid ${Theme.colors.cardBorder}`,
-                borderTop: `2px solid ${Theme.colors.accentBlue}`,
-                borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite',
-              }} />
+            <div className="flex flex-col items-center gap-3" style={{ width: '100%', padding: '8px 0' }}>
+              <div style={{ fontSize: '20px' }}>&#127908;</div>
               <span style={{ fontSize: '12px', color: Theme.colors.accentBlue, fontWeight: 600 }}>
-                Transcribing audio...
+                {STAGE_LABELS[uploadStage] || 'Processing...'}
               </span>
+              {/* Progress bar */}
+              <div style={{
+                width: '100%',
+                maxWidth: '240px',
+                height: '4px',
+                borderRadius: '2px',
+                background: Theme.colors.cardBorder,
+                overflow: 'hidden',
+              }}>
+                <div style={{
+                  height: '100%',
+                  borderRadius: '2px',
+                  background: Theme.colors.accentBlue,
+                  width: `${uploadProgress || 0}%`,
+                  transition: 'width 0.4s ease',
+                }} />
+              </div>
+              {/* Stage steps */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {AUDIO_STAGES.map((stage, i) => {
+                  const currentIdx = AUDIO_STAGES.indexOf(uploadStage);
+                  const done = i < currentIdx;
+                  const active = i === currentIdx;
+                  return (
+                    <React.Fragment key={stage}>
+                      {i > 0 && (
+                        <div style={{
+                          width: '16px',
+                          height: '1px',
+                          background: done ? Theme.colors.accentBlue : Theme.colors.cardBorder,
+                        }} />
+                      )}
+                      <div style={{
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        background: done
+                          ? Theme.colors.accentBlue
+                          : active
+                            ? Theme.colors.accentBlue
+                            : Theme.colors.cardBorder,
+                        opacity: done ? 1 : active ? 1 : 0.4,
+                        boxShadow: active ? `0 0 4px ${Theme.colors.accentBlue}` : 'none',
+                        transition: 'all 0.3s ease',
+                      }} />
+                    </React.Fragment>
+                  );
+                })}
+              </div>
               <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
-                This may take a few minutes
+                {uploadProgress > 0 ? `${uploadProgress}%` : 'Starting...'}
               </span>
             </div>
           ) : (
@@ -1029,6 +1080,195 @@ const AddNoteForm = ({ onSubmit, uploading, onUpload, onUploadImages }) => {
               <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
                 Supports m4a, mp3, wav, webm
               </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Today's Game Plan (AI-generated from today's notes) ──────────────────────
+const BIAS_CONFIG = {
+  bullish: { label: '▲ Bullish', color: Theme.colors.bullishGreen, bg: Theme.colors.bullishGreenBg, border: Theme.colors.bullishGreenBorder },
+  bearish: { label: '▼ Bearish', color: Theme.colors.bearishRed, bg: Theme.colors.bearishRedBg, border: Theme.colors.bearishRedBorder },
+  neutral: { label: '◈ Neutral', color: Theme.colors.accentAmber, bg: 'rgba(245, 166, 35, 0.08)', border: 'rgba(245, 166, 35, 0.25)' },
+};
+
+const PlanSection = ({ label, items, color }) => {
+  if (!items?.length) return null;
+  return (
+    <div>
+      <div style={{ fontSize: '10px', fontWeight: 700, color: Theme.colors.tertiaryText, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+        {items.map((item, i) => (
+          <div key={i} style={{ display: 'flex', gap: '7px', fontSize: '12px', color: Theme.colors.secondaryText, lineHeight: 1.6 }}>
+            <span style={{ color: color || Theme.colors.accentBlue, flexShrink: 0, fontWeight: 700 }}>•</span>
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const TodayGamePlan = ({ todayNoteCount, onTickerClick }) => {
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [generated, setGenerated] = useState(false);
+
+  const generate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await ApiService.getGamePlan();
+      if (!data.hasNotes) {
+        setError('no_notes');
+      } else if (data.plan) {
+        setPlan(data.plan);
+        setGenerated(true);
+      } else {
+        setError('Generation failed — try again');
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const bias = plan ? (BIAS_CONFIG[plan.bias] || BIAS_CONFIG.neutral) : null;
+  const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  return (
+    <div className="card" style={{
+      padding: '16px',
+      borderLeft: `3px solid ${Theme.colors.accentAmber}`,
+      background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.04) 0%, transparent 60%)',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: plan ? '14px' : '10px' }}>
+        <div>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: Theme.colors.primaryText, letterSpacing: '-0.01em' }}>
+            Today's Game Plan
+          </div>
+          <div style={{ fontSize: '10px', color: Theme.colors.tertiaryText, marginTop: '2px' }}>{dateStr}</div>
+        </div>
+        {generated && (
+          <span
+            onClick={generate}
+            style={{ fontSize: '10px', fontWeight: 600, color: Theme.colors.tertiaryText, cursor: 'pointer', padding: '3px 8px', borderRadius: Theme.radius.xs, transition: 'color 0.15s ease' }}
+            onMouseEnter={e => e.currentTarget.style.color = Theme.colors.accentBlue}
+            onMouseLeave={e => e.currentTarget.style.color = Theme.colors.tertiaryText}
+          >
+            ↺ Regenerate
+          </span>
+        )}
+      </div>
+
+      {/* States */}
+      {!generated && !loading && error !== 'no_notes' && (
+        <div>
+          {todayNoteCount === 0 ? (
+            <div style={{ fontSize: '12px', color: Theme.colors.tertiaryText, padding: '4px 0 10px' }}>
+              No notes for today yet — add some analysis below, then generate your game plan.
+            </div>
+          ) : (
+            <div style={{ fontSize: '12px', color: Theme.colors.secondaryText, padding: '4px 0 10px' }}>
+              {todayNoteCount} note{todayNoteCount > 1 ? 's' : ''} posted today. Ready to generate.
+            </div>
+          )}
+          <button
+            onClick={generate}
+            disabled={todayNoteCount === 0}
+            style={{
+              background: todayNoteCount === 0 ? Theme.colors.tertiaryText : Theme.colors.accentAmber,
+              border: 'none', borderRadius: Theme.radius.sm,
+              color: todayNoteCount === 0 ? Theme.colors.secondaryText : '#000',
+              padding: '8px 18px', fontSize: '11px', fontWeight: 800,
+              cursor: todayNoteCount === 0 ? 'default' : 'pointer',
+              fontFamily: 'inherit', letterSpacing: '0.04em', textTransform: 'uppercase',
+              opacity: todayNoteCount === 0 ? 0.4 : 1, transition: 'all 0.15s ease',
+            }}
+          >
+            Generate Game Plan
+          </button>
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0' }}>
+          <div style={{
+            width: '14px', height: '14px',
+            border: `2px solid ${Theme.colors.cardBorder}`,
+            borderTop: `2px solid ${Theme.colors.accentAmber}`,
+            borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+          }} />
+          <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>Generating from today's notes...</span>
+        </div>
+      )}
+
+      {error === 'no_notes' && (
+        <div style={{ fontSize: '12px', color: Theme.colors.tertiaryText, padding: '4px 0' }}>
+          No notes for today yet — add some analysis below, then generate your game plan.
+        </div>
+      )}
+
+      {error && error !== 'no_notes' && (
+        <div style={{ fontSize: '12px', color: Theme.colors.bearishRed }}>{error}</div>
+      )}
+
+      {/* Generated plan */}
+      {plan && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Bias badge */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <span style={{
+              fontSize: '11px', fontWeight: 800, padding: '4px 12px',
+              borderRadius: Theme.radius.full, whiteSpace: 'nowrap',
+              background: bias.bg, color: bias.color, border: `1px solid ${bias.border}`,
+            }}>
+              {bias.label}
+            </span>
+            {plan.biasReason && (
+              <span style={{ fontSize: '12px', color: Theme.colors.secondaryText, lineHeight: 1.6, paddingTop: '2px' }}>
+                {plan.biasReason}
+              </span>
+            )}
+          </div>
+
+          <PlanSection label="Key Levels" items={plan.keyLevels} color={Theme.colors.accentBlue} />
+          <PlanSection label="Setups to Watch" items={plan.setups} color={Theme.colors.bullishGreen} />
+          <PlanSection label="Risks" items={plan.risks} color={Theme.colors.bearishRed} />
+
+          {/* Watchlist tickers */}
+          {plan.watchlist?.length > 0 && (
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 700, color: Theme.colors.tertiaryText, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>
+                Watchlist
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                {plan.watchlist.map(t => (
+                  <span
+                    key={t}
+                    onClick={() => onTickerClick && onTickerClick(t)}
+                    style={{
+                      fontSize: '11px', fontWeight: 700, padding: '3px 10px',
+                      borderRadius: Theme.radius.full, cursor: 'pointer',
+                      background: Theme.colors.accentBlueDim, color: Theme.colors.accentBlue,
+                      border: `1px solid ${Theme.colors.accentBlueBorder}`,
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = Theme.colors.accentBlue; e.currentTarget.style.color = '#fff'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = Theme.colors.accentBlueDim; e.currentTarget.style.color = Theme.colors.accentBlue; }}
+                  >
+                    ${t}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1070,7 +1310,7 @@ const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
         All
       </div>
 
-      {notesByDate.map(({ date }) => {
+      {notesByDate.map(({ date, notes }) => {
         const isActive = selectedDate === date;
         const isWeekend = [0, 6].includes(new Date(date + 'T12:00:00').getDay());
         return (
@@ -1094,6 +1334,14 @@ const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
             <div style={{ fontSize: '9px', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {formatWeekday(date)}
             </div>
+            <div style={{
+              fontSize: '9px',
+              fontWeight: 700,
+              marginTop: '2px',
+              opacity: isActive ? 0.8 : 0.5,
+            }}>
+              {notes.length}
+            </div>
           </div>
         );
       })}
@@ -1107,6 +1355,8 @@ export const TradingNotesSection = ({ onTickerClick }) => {
     loading,
     error,
     uploading,
+    uploadStage,
+    uploadProgress,
     brief,
     briefLoading,
     createNote,
@@ -1119,6 +1369,13 @@ export const TradingNotesSection = ({ onTickerClick }) => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTicker, setSelectedTicker] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  // Count today's notes (excludes plan type to avoid circular dependency)
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayNoteCount = notesByDate
+    .find(({ date }) => date === todayStr)
+    ?.notes.filter(n => n.type !== 'plan').length ?? 0;
 
   // Collect all unique tickers across all notes, sorted alphabetically
   const allTickers = useMemo(() => {
@@ -1232,14 +1489,79 @@ export const TradingNotesSection = ({ onTickerClick }) => {
         </div>
       )}
 
+      {/* Today's Game Plan — always shown, generates from today's notes */}
+      {!loading && <TodayGamePlan todayNoteCount={todayNoteCount} onTickerClick={onTickerClick} />}
+
+      {/* Add note button / form */}
+      {showAddForm ? (
+        <div style={{ position: 'relative' }}>
+          <span
+            onClick={() => !uploading && setShowAddForm(false)}
+            style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              pointerEvents: uploading ? 'none' : 'auto',
+              opacity: uploading ? 0.3 : 1,
+              fontSize: '11px',
+              color: Theme.colors.tertiaryText,
+              cursor: 'pointer',
+              padding: '2px 6px',
+              borderRadius: Theme.radius.xs,
+              zIndex: 1,
+              transition: 'color 0.15s ease',
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = Theme.colors.secondaryText}
+            onMouseLeave={e => e.currentTarget.style.color = Theme.colors.tertiaryText}
+          >
+            ✕
+          </span>
+          <AddNoteForm
+            onSubmit={async (data) => { await handleCreate(data); setShowAddForm(false); }}
+            uploading={uploading}
+            uploadStage={uploadStage}
+            uploadProgress={uploadProgress}
+            onUpload={async (file, title) => { await handleUpload(file, title); setShowAddForm(false); }}
+            onUploadImages={async (files, title, content) => { await handleUploadImages(files, title, content); setShowAddForm(false); }}
+          />
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowAddForm(true)}
+          style={{
+            background: 'transparent',
+            border: `1px dashed ${Theme.colors.cardBorder}`,
+            borderRadius: Theme.radius.sm,
+            color: Theme.colors.secondaryText,
+            padding: '10px 20px',
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            width: '100%',
+            textAlign: 'center',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = Theme.colors.accentBlue;
+            e.currentTarget.style.color = Theme.colors.accentBlue;
+            e.currentTarget.style.background = Theme.colors.accentBlueDim;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = Theme.colors.cardBorder;
+            e.currentTarget.style.color = Theme.colors.secondaryText;
+            e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          + New Note
+        </button>
+      )}
+
       {/* Summary from last 3-4 market days */}
       <BriefSection brief={brief} briefLoading={briefLoading} onTickerClick={onTickerClick} />
 
       {/* Ask your notes */}
       <NotesChat />
-
-      {/* Add note form */}
-      <AddNoteForm onSubmit={handleCreate} uploading={uploading} onUpload={handleUpload} onUploadImages={handleUploadImages} />
 
       {/* Ticker filter bar */}
       {allTickers.length > 0 && (

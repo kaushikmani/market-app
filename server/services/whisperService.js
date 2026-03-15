@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { GEMINI_API_KEY } from '../config.js';
+import { WATCHLIST } from '../data/watchlist.js';
 
 const execAsync = promisify(exec);
 
@@ -21,30 +22,7 @@ try {
   }
 }
 
-const WATCHLIST_TICKERS = [
-  'SPY','QQQ','IWM','DIA','GLD','SLV','XLK','XLC','XLV','IGV','ARKG','NAIL',
-  'NVDA','TSLA','AAPL','MSFT','GOOGL','AMZN','META',
-  'CRWD','PANW','FTNT','ZS','OKTA','RBRK',
-  'MU','WDC','STX','PSTG',
-  'ASML','LRCX','KLAC','AMAT','TSM','AMD','ARM','MRVL','INTC','TXN','ADI','AVGO','ON','ALAB','CRDO',
-  'APH','CIEN','LITE','SMCI','VRT','DELL','HPE','ANET','CLS',
-  'PLTR','ORCL','CRM','NOW','ADBE','TEAM','WDAY','HUBS','MDB','SNOW','DDOG','NET','PATH',
-  'MSTR','COIN','HOOD','MARA','RIOT','HUT','IREN','IBIT',
-  'VST','CEG','LEU','CCJ','OKLO','SMR','NNE','GEV',
-  'FSLR','ENPH','BE','PLUG',
-  'LMT','RTX','NOC','GD','BA','RKLB','ASTS',
-  'IONQ','RGTI','QBTS','QUBT',
-  'SOFI','ALLY','GS','JPM','BAC',
-  'BABA','BIDU','JD','PDD',
-  'RIVN','LCID','LI','XPEV',
-  'ACHR','JOBY',
-  'UNH','ABBV','LLY','NVO','MRNA','CRSP',
-  'RDDT','SNAP','PINS','SPOT','TTD','APP','DIS','NFLX',
-  'HD','WMT','NKE','KO',
-  'ABNB','BKNG','DAL','AAL',
-  'XOM','CVX','OXY',
-  'CAT','HON','FCX',
-];
+const WATCHLIST_TICKERS = [...new Set(WATCHLIST.flatMap(g => g.tickers))];
 
 export function extractTickers(text) {
   if (!text) return [];

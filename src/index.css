@@ -212,3 +212,9 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
   background: rgba(108, 138, 255, 0.25);
   color: #fff;
 }
+
+/* ─── Toast animation ─── */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

@@ -19,11 +19,14 @@ import { TradingNotesSection } from './components/TradingNotesSection';
 import { KeyLevelsSection } from './components/KeyLevelsSection';
 import { OutlookSection } from './components/OutlookSection';
 import { EarningsPreviewSection } from './components/EarningsPreviewSection';
+import { EarningsHistorySection } from './components/EarningsHistorySection';
+import { StockNotesSection } from './components/StockNotesSection';
 import { StockChart } from './components/StockChart';
 import { ChartModal } from './components/ChartModal';
 import { EarningsCalendarSection } from './components/EarningsCalendarSection';
 import { MarketSentimentSection } from './components/MarketSentimentSection';
 import { AlertsPanel } from './components/AlertsPanel';
+import { AlertToast } from './components/AlertToast';
 import { ApiService } from './services/ApiService';
 import { useMarketData } from './hooks/useMarketData';
 import { Theme } from './models/Theme';
@@ -41,7 +44,7 @@ import {
 
 const TABS = [
   { key: 'market', label: 'Morning Brief' },
-  { key: 'stock', label: 'Deep Dive' },
+  { key: 'stock', label: 'Stocks' },
   { key: 'notes', label: 'Journal' },
   { key: 'outlook', label: 'Outlook' },
 ];
@@ -118,9 +121,9 @@ function buildStockFromFinviz(data, smaData) {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState('market');
-  const [ticker, setTicker] = useState('AAPL');
-  const [tickerInput, setTickerInput] = useState('AAPL');
+  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('activeTab') || 'market');
+  const [ticker, setTicker] = useState(() => localStorage.getItem('lastTicker') || 'AAPL');
+  const [tickerInput, setTickerInput] = useState(() => localStorage.getItem('lastTicker') || 'AAPL');
   const [chartModalTicker, setChartModalTicker] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
@@ -129,6 +132,23 @@ function App() {
   const { news, stockNews, finvizQuote, finvizPeers, smaData, marketBriefing, watchlistScan, loadingBriefing, loadingScan, loadingMarketNews, loading, loadingPeers, loadingNews, errors } = useMarketData(ticker, activeTab === 'stock');
 
   const stock = useMemo(() => buildStockFromFinviz(finvizQuote, smaData), [finvizQuote, smaData]);
+
+  // Merge Polygon news + MarketBriefing news into a single sorted feed
+  const combinedNews = useMemo(() => {
+    const polygonArticles = news?.articles || [];
+    const briefingNews = (marketBriefing?.news || []).map(item => ({
+      title: item.title,
+      url: item.url,
+      source: item.source,
+      publishedAt: item.time,
+    }));
+    const merged = [...polygonArticles, ...briefingNews].sort((a, b) => {
+      const ta = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const tb = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return tb - ta;
+    });
+    return { articles: merged };
+  }, [news, marketBriefing]);
 
   // Earnings preview — fetch when earnings are within 30 days
   const [earningsPreview, setEarningsPreview] = useState(null);
@@ -167,6 +187,20 @@ function App() {
       .finally(() => setEarningsPreviewLoading(false));
   }, [ticker, earningsDaysAway]);
 
+  // Earnings history — fetch when ticker changes
+  const [earningsHistory, setEarningsHistory] = useState(null);
+  const [earningsHistoryLoading, setEarningsHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    if (!ticker) return;
+    setEarningsHistoryLoading(true);
+    setEarningsHistory(null);
+    ApiService.getEarningsHistory(ticker)
+      .then(data => setEarningsHistory(data))
+      .catch(() => {})
+      .finally(() => setEarningsHistoryLoading(false));
+  }, [ticker]);
+
   // Pre-market report — fetch once on mount
   const [preMarketReport, setPreMarketReport] = useState(null);
   const [preMarketLoading, setPreMarketLoading] = useState(true);
@@ -179,10 +213,15 @@ function App() {
       .finally(() => setPreMarketLoading(false));
   }, []);
 
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    localStorage.setItem('activeTab', tab);
+  };
+
   const handleTickerSubmit = (e) => {
     e.preventDefault();
     const val = tickerInput.trim().toUpperCase();
-    if (val) setTicker(val);
+    if (val) { setTicker(val); localStorage.setItem('lastTicker', val); }
   };
 
   const handleTickerClick = (newTicker) => {
@@ -190,7 +229,8 @@ function App() {
     if (val) {
       setTickerInput(val);
       setTicker(val);
-      setActiveTab('stock');
+      localStorage.setItem('lastTicker', val);
+      handleTabChange('stock');
       setTimeout(() => {
         if (stockZoneRef.current) {
           stockZoneRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -201,6 +241,7 @@ function App() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: Theme.colors.appBackground }}>
+      <AlertToast />
       <ChartModal
         ticker={chartModalTicker}
         onClose={() => setChartModalTicker(null)}
@@ -230,7 +271,7 @@ function App() {
               return (
                 <div
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => handleTabChange(tab.key)}
                   style={{
                     padding: '7px 20px',
                     fontSize: '12px',
@@ -258,11 +299,12 @@ function App() {
           <div style={{ padding: '0 20px' }}>
 
             {/* ── 1. Greeting + market status ── */}
+            {/* ── 1. Theme Performance — sector rotation context ── */}
             <div style={{ paddingTop: '20px' }}>
-              <MarketBriefingSection data={marketBriefing} loading={loadingBriefing} error={errors.marketBriefing} />
+              <ThemePerformanceSection onTickerClick={handleTickerClick} onChartClick={setChartModalTicker} />
             </div>
 
-            {/* ── 2. Sentiment (Fear & Greed) — critical daily context ── */}
+            {/* ── 2. Sentiment (Fear & Greed) ── */}
             <div style={{ marginTop: '24px' }}>
               <SectionDivider title="Sentiment" />
             </div>
@@ -270,7 +312,22 @@ function App() {
               <MarketSentimentSection />
             </div>
 
-            {/* ── 3. Live Gap Scanner + Alerts button ── */}
+            {/* ── 3. Twitter / X Feed ── */}
+            <div style={{ paddingTop: '20px' }}>
+              <MarketBriefingSection data={marketBriefing} loading={loadingBriefing} error={errors.marketBriefing} />
+            </div>
+
+            {/* ── 4. Pre-Market Macro Report ── */}
+            <div style={{ marginTop: '24px' }}>
+              <PreMarketReportSection
+                data={preMarketReport}
+                loading={preMarketLoading}
+                error={preMarketError}
+                onTickerClick={handleTickerClick}
+              />
+            </div>
+
+            {/* ── 5. Live Gap Scanner + Alerts button ── */}
             <div style={{ marginTop: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <SectionDivider title="Gappers" />
@@ -295,17 +352,7 @@ function App() {
               <GapScannerSection onTickerClick={handleTickerClick} onChartClick={setChartModalTicker} />
             </div>
 
-            {/* ── 4. Pre-Market Macro Report ── */}
-            <div style={{ marginTop: '24px' }}>
-              <PreMarketReportSection
-                data={preMarketReport}
-                loading={preMarketLoading}
-                error={preMarketError}
-                onTickerClick={handleTickerClick}
-              />
-            </div>
-
-            {/* ── 5. Setups ── */}
+            {/* ── 6. Setups ── */}
             <div style={{ marginTop: '24px' }}>
               <SectionDivider title="Setups" subtitle={loadingScan ? 'Scanning...' : ''} />
             </div>
@@ -313,22 +360,17 @@ function App() {
               <TodaysSetupsSection data={watchlistScan} loading={loadingScan} error={errors.watchlistScan} onTickerClick={handleTickerClick} />
             </div>
 
-            {/* ── 6. Theme Performance — sector rotation context ── */}
-            <div style={{ marginTop: '24px' }}>
-              <ThemePerformanceSection onTickerClick={handleTickerClick} onChartClick={setChartModalTicker} />
-            </div>
-
             {/* ── 7. Earnings Calendar — upcoming catalysts ── */}
             <div style={{ marginTop: '24px' }}>
               <EarningsCalendarSection onTickerClick={handleTickerClick} />
             </div>
 
-            {/* ── 8. Market News — background reading ── */}
+            {/* ── 8. News (Polygon + X) ── */}
             <div style={{ marginTop: '24px' }}>
-              <SectionDivider title="News" subtitle={loadingMarketNews ? 'Loading...' : ''} />
+              <SectionDivider title="News" subtitle={loadingMarketNews || loadingBriefing ? 'Loading...' : ''} />
             </div>
             <div style={{ marginTop: '8px' }}>
-              <NewsSection data={news} loading={loadingMarketNews} error={errors.news} />
+              <NewsSection data={combinedNews} loading={loadingMarketNews && loadingBriefing} error={errors.news} />
             </div>
 
           </div>
@@ -418,6 +460,12 @@ function App() {
               {/* Interactive Chart */}
               <StockChart smaData={smaData} ticker={ticker} loading={loading} />
 
+              {/* Earnings History chart */}
+              <EarningsHistorySection
+                data={earningsHistory}
+                loading={earningsHistoryLoading}
+              />
+
               {/* Earnings Preview — only shown when earnings within 30 days */}
               {(earningsPreviewLoading || earningsPreview) && (
                 <EarningsPreviewSection
@@ -467,6 +515,16 @@ function App() {
                 industry={finvizQuote?.industry}
                 onTickerClick={handleTickerClick}
               />
+
+              {ticker && (
+                <>
+                  <SectionDivider title="Journal" />
+                  <StockNotesSection
+                    ticker={ticker}
+                    onOpenJournal={() => handleTabChange('notes')}
+                  />
+                </>
+              )}
 
               <SectionDivider title="Headlines" subtitle={loadingNews ? 'Loading...' : ''} />
               <StockNewsSection data={stockNews} loading={loadingNews} error={errors.stockNews} />

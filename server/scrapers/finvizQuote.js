@@ -1,3 +1,5 @@
+import * as cheerio from 'cheerio';
+
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export async function scrapeFinvizQuote(ticker) {
@@ -5,100 +7,94 @@ export async function scrapeFinvizQuote(ticker) {
     const url = `https://finviz.com/quote.ashx?t=${encodeURIComponent(ticker)}&p=d`;
     const res = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(15000),
     });
+    if (!res.ok) throw new Error(`Finviz returned ${res.status}`);
     const html = await res.text();
+    const $ = cheerio.load(html);
 
-    // Company name from quote-header_ticker-wrapper_company
-    const companyMatch = html.match(/quote-header_ticker-wrapper_company[^>]*>(.*?)<\/a>/s);
-    const companyName = companyMatch ? companyMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+    // Company name
+    const companyName = $('[class*="quote-header_ticker-wrapper_company"]').first().text().trim();
 
-    // Sector and industry from quote-links
+    // Sector / industry from breadcrumb links
     let sector = '';
     let industry = '';
-    const sectorMatch = html.match(/<a[^>]*href="[^"]*sec_[^"]*"[^>]*>(.*?)<\/a>/);
-    if (sectorMatch) sector = sectorMatch[1].replace(/<[^>]+>/g, '').trim();
-    const industryMatch = html.match(/<a[^>]*href="[^"]*ind_[^"]*"[^>]*>(.*?)<\/a>/);
-    if (industryMatch) industry = industryMatch[1].replace(/<[^>]+>/g, '').trim();
+    $('a[href*="sec_"]').each((_, el) => { if (!sector) sector = $(el).text().trim(); });
+    $('a[href*="ind_"]').each((_, el) => { if (!industry) industry = $(el).text().trim(); });
 
-    // Price, change from quote-header_right block
-    let price = '';
-    let change = '';
-    let changePct = '';
-    const priceBlock = html.match(/quote-header_right.*?<\/div><\/div><\/div>/s);
-    if (priceBlock) {
-      const nums = priceBlock[0].replace(/<[^>]+>/g, ' ').match(/[+-]?\d+\.\d+/g);
-      if (nums && nums.length >= 3) {
-        // Format: date parts... price dollarChange pctChange
-        // Find the price (largest number that looks like a stock price)
-        price = nums.find(n => parseFloat(n) > 10 && !n.startsWith('+') && !n.startsWith('-')) || '';
-        const priceIdx = nums.indexOf(price);
-        if (priceIdx >= 0 && priceIdx + 2 < nums.length) {
-          change = nums[priceIdx + 1];
-          changePct = nums[priceIdx + 2] + '%';
-        }
-      }
+    // Price block — look for the right-side header price elements
+    let price = '', change = '', changePct = '';
+    const priceEl = $('[class*="quote-header_right"] [class*="quote-header_price"]').first();
+    if (priceEl.length) {
+      price = priceEl.text().trim();
+    } else {
+      // Fallback: grab first large number from header right
+      const headerText = $('[class*="quote-header_right"]').text();
+      const nums = headerText.match(/[\d,]+\.\d+/g);
+      if (nums) price = nums.find(n => parseFloat(n.replace(',', '')) > 1) || '';
     }
 
-    // Company description/bio
-    let description = '';
-    const bioMatch = html.match(/quote_profile-bio">(.*?)<\/div>/s);
-    if (bioMatch) {
-      description = bioMatch[1]
-        .replace(/<[^>]+>/g, '')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&#\d+;/g, '')
-        .trim();
+    // Change values from header right spans
+    const changeEls = $('[class*="quote-header_right"] [class*="change"]');
+    if (changeEls.length >= 2) {
+      change = changeEls.eq(0).text().trim().replace(/[()]/g, '');
+      changePct = changeEls.eq(1).text().trim().replace(/[()]/g, '') + '%';
+    } else if (changeEls.length === 1) {
+      const parts = changeEls.eq(0).text().trim().split(/\s+/);
+      if (parts.length >= 2) { change = parts[0]; changePct = parts[1].replace(/[()]/g, '') + '%'; }
     }
 
-    // Analyst ratings/target from the page
+    // Company description
+    const description = $('[class*="quote_profile-bio"]').first()
+      .text()
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Analyst rating from Recom row
     let analystRating = '';
-    const ratingMatch = html.match(/Recom.*?<b>(.*?)<\/b>/s);
-    if (ratingMatch) {
-      const val = parseFloat(ratingMatch[1]);
-      if (!isNaN(val)) {
-        if (val <= 1.5) analystRating = 'Strong Buy';
-        else if (val <= 2.5) analystRating = 'Buy';
-        else if (val <= 3.5) analystRating = 'Hold';
-        else if (val <= 4.5) analystRating = 'Sell';
-        else analystRating = 'Strong Sell';
+    $('td').each((_, el) => {
+      const text = $(el).text().trim();
+      if (text === 'Recom') {
+        const val = parseFloat($(el).next().find('b').text().trim());
+        if (!isNaN(val)) {
+          if (val <= 1.5) analystRating = 'Strong Buy';
+          else if (val <= 2.5) analystRating = 'Buy';
+          else if (val <= 3.5) analystRating = 'Hold';
+          else if (val <= 4.5) analystRating = 'Sell';
+          else analystRating = 'Strong Sell';
+        }
+        return false; // break
       }
-    }
+    });
 
-    // Peer tickers from tab-link with "Peers" text
+    // Peer tickers from the Peers tab link
     let peerTickers = [];
-    const peersMatch = html.match(/<a[^>]*class="[^"]*tab-link[^"]*"[^>]*href="screener\.ashx\?[^"]*t=([A-Z,]+)"[^>]*>\s*Peers\s*<\/a>/);
-    if (peersMatch) {
-      peerTickers = peersMatch[1].split(',');
-    }
+    $('a.tab-link').each((_, el) => {
+      const href = $(el).attr('href') || '';
+      const text = $(el).text().trim();
+      if (text === 'Peers' && href.includes('screener.ashx')) {
+        const m = href.match(/[?&]t=([A-Z,]+)/);
+        if (m) peerTickers = m[1].split(',').filter(Boolean);
+        return false;
+      }
+    });
 
-    // Fundamentals from snapshot-table2
+    // Fundamentals table — key/value pairs
     const fundamentals = {};
-    const tableMatch = html.match(/snapshot-table2.*?<\/table>/s);
-    if (tableMatch) {
-      const cells = [];
-      const cellRegex = /<td[^>]*>(.*?)<\/td>/gs;
-      let m;
-      while ((m = cellRegex.exec(tableMatch[0])) !== null) {
-        // Strip HTML — handle Finviz tooltip spans that have unescaped > in attributes
-        let cellText = m[1]
-          .replace(/<span[^]*?<\/span>/gs, '')  // remove full span elements (tooltips)
-          .replace(/<[^>]*>/g, '')              // remove remaining tags
-          .trim();
-        // If tooltip artifacts leaked through (e.g. 'BMO = ...delay=[300]">Earnings'),
-        // extract just the text after the last "> or ]">
-        const tooltipLeak = cellText.match(/(?:delay=\[\d+\])?"\s*>\s*(.+)$/s);
-        if (tooltipLeak) {
-          cellText = tooltipLeak[1].trim();
-        }
-        cells.push(cellText);
-      }
-      for (let i = 0; i < cells.length - 1; i += 2) {
-        if (cells[i] && cells[i + 1]) {
-          fundamentals[cells[i]] = cells[i + 1];
-        }
-      }
+    const tdEls = $('table[class*="snapshot-table2"] td').toArray();
+    for (let i = 0; i < tdEls.length - 1; i += 2) {
+      const labelEl = $(tdEls[i]);
+      const valueEl = $(tdEls[i + 1]);
+
+      // Label: strip tooltips (inner spans), get text
+      const label = labelEl.clone().find('span').remove().end().text().trim();
+      // Value: get text of <b> if present, otherwise text
+      let value = valueEl.find('b').first().text().trim() || valueEl.text().trim();
+
+      // Clean up tooltip artifacts from value
+      value = value.replace(/[^]*?>\s*/, '').trim();
+
+      if (label && value) fundamentals[label] = value;
     }
 
     return {

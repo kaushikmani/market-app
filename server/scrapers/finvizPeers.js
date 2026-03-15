@@ -1,19 +1,6 @@
+import * as cheerio from 'cheerio';
+
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-function extractCellText(tdHtml) {
-  // First try to get text from <a> tag (primary content)
-  const anchorMatch = tdHtml.match(/<a[^>]*>(.*?)<\/a>/);
-  if (anchorMatch) return anchorMatch[1].replace(/<[^>]+>/g, '').trim();
-
-  // Fall back to the first direct text content, ignoring tooltip attributes
-  // Remove data-boxover content and nested tags
-  const cleaned = tdHtml
-    .replace(/data-boxover="[^"]*"/g, '')
-    .replace(/<span[^>]*>.*?<\/span>/gs, '')
-    .replace(/<[^>]+>/g, '')
-    .trim();
-  return cleaned;
-}
 
 export async function scrapeFinvizPeers(tickers) {
   const tickerList = tickers.split(',').map(t => t.trim()).filter(Boolean);
@@ -24,40 +11,37 @@ export async function scrapeFinvizPeers(tickers) {
     const url = `https://finviz.com/screener.ashx?v=111&t=${tickerParam}`;
     const res = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(15000),
     });
+    if (!res.ok) throw new Error(`Finviz returned ${res.status}`);
     const html = await res.text();
+    const $ = cheerio.load(html);
 
     const peers = [];
-    // Find data rows (they have valign="top" and the styled-row class)
-    const rowRegex = /<tr[^>]*valign="top"[^>]*>([\s\S]*?)<\/tr>/g;
-    let m;
-    while ((m = rowRegex.exec(html)) !== null) {
-      const rawCells = [];
-      const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/g;
-      let cm;
-      while ((cm = cellRegex.exec(m[1])) !== null) {
-        rawCells.push(cm[1]);
-      }
 
-      if (rawCells.length < 8) continue;
+    // Each result row has class "styled-row" (or alternating) inside the screener table
+    $('table#screener-views-table tr, table.screener-table tr').each((_, row) => {
+      const cells = $(row).find('td');
+      if (cells.length < 10) return;
 
-      // Cell layout: 0=No, 1=Ticker(in <a>), 2=Company, 3=Sector, 4=Industry, 5=Country, 6=MktCap, 7=P/E, 8=Price(in <a>), 9=Change, 10=Volume
-      const ticker = extractCellText(rawCells[1]);
-      if (!ticker || !/^[A-Z]{1,5}$/.test(ticker)) continue;
+      // Column layout: 0=No, 1=Ticker, 2=Company, 3=Sector, 4=Industry,
+      //                5=Country, 6=MktCap, 7=P/E, 8=Price, 9=Change, 10=Volume
+      const ticker = cells.eq(1).find('a').first().text().trim();
+      if (!ticker || !/^[A-Z]{1,6}$/.test(ticker)) return;
 
       peers.push({
         ticker,
-        company: extractCellText(rawCells[2]),
-        sector: extractCellText(rawCells[3]),
-        industry: extractCellText(rawCells[4]),
-        country: extractCellText(rawCells[5]),
-        marketCap: extractCellText(rawCells[6]),
-        pe: extractCellText(rawCells[7]),
-        price: extractCellText(rawCells[8]),
-        change: extractCellText(rawCells[9]),
-        volume: extractCellText(rawCells[10]),
+        company:   cells.eq(2).text().trim(),
+        sector:    cells.eq(3).text().trim(),
+        industry:  cells.eq(4).text().trim(),
+        country:   cells.eq(5).text().trim(),
+        marketCap: cells.eq(6).text().trim(),
+        pe:        cells.eq(7).text().trim(),
+        price:     cells.eq(8).find('a').first().text().trim() || cells.eq(8).text().trim(),
+        change:    cells.eq(9).text().trim(),
+        volume:    cells.eq(10).text().trim(),
       });
-    }
+    });
 
     return { peers: peers.slice(0, 15), success: true };
   } catch (error) {

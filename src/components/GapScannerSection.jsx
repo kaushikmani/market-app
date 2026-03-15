@@ -136,9 +136,10 @@ export function GapScannerSection({ onTickerClick }) {
     return () => clearInterval(t);
   }, []);
 
-  const gapUps = data?.gapUps || [];
-  const gapDowns = data?.gapDowns || [];
+  const gapUps     = data?.gapUps   || [];
+  const gapDowns   = data?.gapDowns || [];
   const activeList = activeTab === 'up' ? gapUps : gapDowns;
+  const isPreMarket = data?.isPreMarket ?? false;
 
   return (
     <div className="card" style={{ padding: '14px' }}>
@@ -157,6 +158,19 @@ export function GapScannerSection({ onTickerClick }) {
             LIVE
           </span>
         </div>
+
+        {/* PRE-MARKET badge */}
+        {isPreMarket && (
+          <span style={{
+            fontSize: '9px', fontWeight: 700, letterSpacing: '0.06em',
+            padding: '1px 6px', borderRadius: '3px',
+            background: 'rgba(245, 166, 35, 0.12)',
+            color: Theme.colors.accentAmber,
+            border: `1px solid rgba(245, 166, 35, 0.25)`,
+          }}>
+            PRE-MARKET
+          </span>
+        )}
 
         {/* Updated timestamp */}
         {data?.timestamp && (
@@ -217,7 +231,7 @@ export function GapScannerSection({ onTickerClick }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${Theme.colors.cardBorder}` }}>
-                {['', 'Ticker', 'Group', 'Gap', 'Now', 'Price', 'Volume'].map((h, i) => (
+                {['', 'Ticker', 'Group', isPreMarket ? 'PM Gap' : 'Gap', isPreMarket ? 'PM Price' : 'Now', 'Price', 'Volume'].map((h, i) => (
                   <th key={i} style={{
                     padding: '0 8px 8px',
                     textAlign: i >= 3 ? 'right' : 'left',

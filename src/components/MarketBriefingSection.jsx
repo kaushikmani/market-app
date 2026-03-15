@@ -1,10 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Theme } from '../models/Theme';
-
-const TABS = [
-  { key: 'news', label: 'News' },
-  { key: 'trading', label: 'Trade Ideas' },
-];
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -21,13 +16,6 @@ function timeAgo(dateStr) {
   } catch {
     return dateStr;
   }
-}
-
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good Morning';
-  if (hour < 17) return 'Good Afternoon';
-  return 'Good Evening';
 }
 
 function getMarketStatus() {
@@ -111,8 +99,6 @@ const BriefingItem = ({ item }) => {
 };
 
 export const MarketBriefingSection = ({ data, loading, error }) => {
-  const [activeTab, setActiveTab] = useState('news');
-  const greeting = getGreeting();
   const market = getMarketStatus();
 
   if (loading) return <LoadingSkeleton />;
@@ -129,22 +115,10 @@ export const MarketBriefingSection = ({ data, loading, error }) => {
 
   if (!data) return null;
 
-  const newsItems = (data.news || []).sort((a, b) => {
-    if (a.time && b.time) return new Date(b.time) - new Date(a.time);
-    return 0;
-  });
-
   const tradingItems = (data.trading || []).sort((a, b) => {
     if (a.time && b.time) return new Date(b.time) - new Date(a.time);
     return 0;
   });
-
-  const filtered = activeTab === 'news' ? newsItems : tradingItems;
-
-  const counts = {
-    news: newsItems.length,
-    trading: tradingItems.length,
-  };
 
   const dateStr = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -158,14 +132,25 @@ export const MarketBriefingSection = ({ data, loading, error }) => {
       {/* Header */}
       <div>
         <div className="flex items-center justify-between" style={{ marginBottom: '4px' }}>
-          <span style={{
-            fontSize: '18px',
-            fontWeight: 800,
-            color: Theme.colors.primaryText,
-            letterSpacing: '-0.02em',
-          }}>
-            {greeting}
-          </span>
+          <div className="flex items-center gap-2">
+            <span style={{
+              fontSize: '13px',
+              fontWeight: 700,
+              color: Theme.colors.primaryText,
+              letterSpacing: '0.01em',
+            }}>
+              Market Chatter
+            </span>
+            <span style={{
+              fontSize: '9px', fontWeight: 700, letterSpacing: '0.06em',
+              padding: '1px 6px', borderRadius: '3px',
+              background: 'rgba(29, 161, 242, 0.10)',
+              color: '#1da1f2',
+              border: '1px solid rgba(29, 161, 242, 0.20)',
+            }}>
+              X
+            </span>
+          </div>
           <div className="flex items-center gap-2">
             <span style={{
               width: '6px',
@@ -180,53 +165,26 @@ export const MarketBriefingSection = ({ data, loading, error }) => {
             </span>
           </div>
         </div>
-        <span style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>
-          {dateStr}
-        </span>
+        <div className="flex items-center gap-3">
+          <span style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>
+            {dateStr}
+          </span>
+          {data.fetchedAt && (
+            <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+              Updated {timeAgo(data.fetchedAt)}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-1" style={{
-        background: Theme.colors.cardBackground,
-        borderRadius: Theme.radius.md,
-        padding: '3px',
-        border: `1px solid ${Theme.colors.cardBorder}`,
-      }}>
-        {TABS.map(tab => {
-          const isActive = activeTab === tab.key;
-          const count = counts[tab.key];
-          return (
-            <div
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                flex: 1,
-                padding: '6px 8px',
-                fontSize: '11px',
-                fontWeight: isActive ? 700 : 500,
-                color: isActive ? '#fff' : Theme.colors.secondaryText,
-                background: isActive ? Theme.colors.accentBlue : 'transparent',
-                borderRadius: '8px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                letterSpacing: '0.02em',
-              }}
-            >
-              {tab.label} {count > 0 && <span style={{ opacity: 0.6 }}>({count})</span>}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* News list */}
+      {/* X / Trade Ideas feed */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', maxHeight: '400px', overflowY: 'auto' }}>
-        {filtered.length === 0 ? (
+        {tradingItems.length === 0 ? (
           <div className="flex items-center justify-center" style={{ padding: '24px' }}>
             <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>No posts available</span>
           </div>
         ) : (
-          filtered.map((item, i) => (
+          tradingItems.map((item, i) => (
             <BriefingItem key={`${item.source}-${i}`} item={item} />
           ))
         )}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ApiService } from '../services/ApiService';
 
 export function useMarketData(ticker, enabled = false) {
@@ -17,9 +17,24 @@ export function useMarketData(ticker, enabled = false) {
   const [loadingNews, setLoadingNews] = useState(false);
   const [errors, setErrors] = useState({});
 
+  // Track in-flight abort controllers to cancel stale requests
+  const abortRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   const fetchAll = useCallback(async () => {
     if (!ticker) return;
 
+    // Cancel any previous in-flight stock fetch
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    if (!mountedRef.current) return;
     setLoading(true);
     setErrors({});
     setFinvizPeers(null);
@@ -29,6 +44,9 @@ export function useMarketData(ticker, enabled = false) {
       ApiService.getFinvizQuote(ticker),
       ApiService.getSMAs(ticker),
     ]);
+
+    // Bail if this request was superseded or component unmounted
+    if (controller.signal.aborted || !mountedRef.current) return;
 
     const [finvizRes, smaRes] = results;
 
@@ -45,23 +63,20 @@ export function useMarketData(ticker, enabled = false) {
 
     setLoading(false);
 
-    // Fetch stock-specific news (Google News + Finviz News + X posts) in background
+    // Background: stock news
     setLoadingNews(true);
     ApiService.getStockNews(ticker)
-      .then(data => setStockNews(data))
-      .catch(err => setErrors(e => ({ ...e, stockNews: err.message })))
-      .finally(() => setLoadingNews(false));
+      .then(data => { if (mountedRef.current && !controller.signal.aborted) setStockNews(data); })
+      .catch(err => { if (mountedRef.current && !controller.signal.aborted) setErrors(e => ({ ...e, stockNews: err.message })); })
+      .finally(() => { if (mountedRef.current && !controller.signal.aborted) setLoadingNews(false); });
 
-    // After finvizQuote resolves with peer tickers, fetch peers sequentially
+    // Background: peers (needs peerTickers from quote)
     if (quoteData?.peerTickers?.length > 0) {
       setLoadingPeers(true);
-      try {
-        const peersData = await ApiService.getFinvizPeers(quoteData.peerTickers.join(','));
-        setFinvizPeers(peersData);
-      } catch (err) {
-        setErrors(e => ({ ...e, finvizPeers: err.message }));
-      }
-      setLoadingPeers(false);
+      ApiService.getFinvizPeers(quoteData.peerTickers.join(','))
+        .then(data => { if (mountedRef.current && !controller.signal.aborted) setFinvizPeers(data); })
+        .catch(err => { if (mountedRef.current && !controller.signal.aborted) setErrors(e => ({ ...e, finvizPeers: err.message })); })
+        .finally(() => { if (mountedRef.current && !controller.signal.aborted) setLoadingPeers(false); });
     }
   }, [ticker]);
 
@@ -69,17 +84,18 @@ export function useMarketData(ticker, enabled = false) {
     if (enabled) fetchAll();
   }, [fetchAll, enabled]);
 
-  // Fetch market news + AI sentiment on mount
+  // Fetch market news + AI sentiment on mount — never re-runs
   useEffect(() => {
     setLoadingMarketNews(true);
     ApiService.getNews()
       .then(newsData => {
+        if (!mountedRef.current) return;
         setNews(newsData);
         if (newsData?.articles?.length > 0) {
           const headlines = newsData.articles.map(a => a.summary || a.title).filter(Boolean);
           ApiService.getNewsSentiment(headlines)
             .then(({ scores }) => {
-              if (!scores?.length) return;
+              if (!mountedRef.current || !scores?.length) return;
               setNews({ ...newsData, articles: newsData.articles.map((a, i) => {
                 const s = scores.find(sc => sc.index === i);
                 return s ? { ...a, sentiment: s.sentiment, sentimentScore: s.score } : a;
@@ -88,27 +104,25 @@ export function useMarketData(ticker, enabled = false) {
             .catch(() => {});
         }
       })
-      .catch(err => setErrors(e => ({ ...e, news: err.message })))
-      .finally(() => setLoadingMarketNews(false));
-  }, []);
+      .catch(err => { if (mountedRef.current) setErrors(e => ({ ...e, news: err.message })); })
+      .finally(() => { if (mountedRef.current) setLoadingMarketNews(false); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch market briefing once on mount (not ticker-dependent)
   useEffect(() => {
     setLoadingBriefing(true);
     ApiService.getMarketBriefing()
-      .then(data => setMarketBriefing(data))
-      .catch(err => setErrors(e => ({ ...e, marketBriefing: err.message })))
-      .finally(() => setLoadingBriefing(false));
-  }, []);
+      .then(data => { if (mountedRef.current) setMarketBriefing(data); })
+      .catch(err => { if (mountedRef.current) setErrors(e => ({ ...e, marketBriefing: err.message })); })
+      .finally(() => { if (mountedRef.current) setLoadingBriefing(false); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch watchlist scan once on mount
   useEffect(() => {
     setLoadingScan(true);
     ApiService.getWatchlistScan()
-      .then(data => setWatchlistScan(data))
-      .catch(err => setErrors(e => ({ ...e, watchlistScan: err.message })))
-      .finally(() => setLoadingScan(false));
-  }, []);
+      .then(data => { if (mountedRef.current) setWatchlistScan(data); })
+      .catch(err => { if (mountedRef.current) setErrors(e => ({ ...e, watchlistScan: err.message })); })
+      .finally(() => { if (mountedRef.current) setLoadingScan(false); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     news,

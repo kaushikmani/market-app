@@ -58,8 +58,60 @@ router.get('/notes', (req, res) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
 
-    const notes = getAllNotes().filter(n => new Date(n.createdAt) >= cutoff);
+    const ticker = req.query.ticker?.toUpperCase() || null;
+    const notes = getAllNotes()
+      .filter(n => new Date(n.createdAt) >= cutoff)
+      .filter(n => !ticker || n.tickers?.includes(ticker));
     res.json({ success: true, notes, count: notes.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/notes/gameplan — generate today's game plan from today's notes
+const GAMEPLAN_PROMPT = `You are a trading coach reviewing a trader's notes from today.
+Generate a structured game plan for the trading session based on these notes.
+
+Return ONLY valid JSON in this exact format (no markdown, no extra text):
+{
+  "bias": "bullish" | "bearish" | "neutral",
+  "biasReason": "one concise sentence explaining the bias",
+  "keyLevels": ["level description 1", "level description 2"],
+  "setups": ["setup description 1", "setup description 2"],
+  "risks": ["risk 1", "risk 2"],
+  "watchlist": ["TICKER1", "TICKER2"]
+}
+
+Rules:
+- bias must be exactly one of: bullish, bearish, neutral
+- Keep each item to one line max
+- Max 4 items per array
+- watchlist should only contain uppercase ticker symbols mentioned in the notes
+- If a field has nothing relevant, return an empty array`;
+
+router.get('/notes/gameplan', async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const notes = getAllNotes().filter(n => (n.date || n.createdAt?.slice(0, 10)) === today);
+
+    if (notes.length === 0) {
+      return res.json({ success: true, hasNotes: false });
+    }
+
+    const input = notes.map(n => {
+      const body = n.summary?.length > 0
+        ? n.summary.join('\n')
+        : (n.content || '').slice(0, 2000);
+      return `[${n.title || 'Note'}]\n${body}`;
+    }).join('\n\n---\n\n');
+
+    const text = await callGemini(GAMEPLAN_PROMPT + '\n\nNotes:\n' + input);
+    if (!text) return res.json({ success: true, hasNotes: true, plan: null, error: 'Generation failed' });
+
+    // Strip markdown fences if present
+    const cleaned = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
+    const plan = JSON.parse(cleaned);
+    res.json({ success: true, hasNotes: true, plan });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -173,7 +225,17 @@ Answer concisely (2-4 sentences max unless a list is needed):`;
   }
 });
 
-// POST /api/notes/upload-audio — upload audio, transcribe, save
+// In-memory transcription job status
+const transcriptionJobs = new Map(); // jobId → { stage, progress, note, error }
+
+// GET /api/notes/transcription-status/:jobId
+router.get('/notes/transcription-status/:jobId', (req, res) => {
+  const job = transcriptionJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+});
+
+// POST /api/notes/upload-audio — upload audio, transcribe async, return jobId immediately
 router.post('/notes/upload-audio', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
@@ -183,24 +245,45 @@ router.post('/notes/upload-audio', upload.single('audio'), async (req, res) => {
     const audioPath = `${req.file.path}${ext}`;
     fs.renameSync(req.file.path, audioPath);
 
-    const transcript = await transcribeAudio(audioPath);
-    const tickers = extractTickers(transcript);
-    const summary = await summarizeTranscript(transcript);
+    const jobId = generateId();
+    transcriptionJobs.set(jobId, { stage: 'transcribing', progress: 10 });
 
-    const note = writeNote({
-      id: generateId(),
-      date: new Date().toISOString().split('T')[0],
-      type: 'audio',
-      title: req.body?.title || `Morning Call — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-      content: transcript,
-      summary,
-      tickers,
-      tags: req.body?.tags ? JSON.parse(req.body.tags) : ['morning-call'],
-      audioFile: path.basename(audioPath),
-      createdAt: new Date().toISOString(),
-    });
+    // Return jobId immediately so client can poll
+    res.json({ success: true, jobId, status: 'transcribing' });
 
-    res.json({ success: true, note });
+    // Run transcription pipeline in background
+    (async () => {
+      try {
+        transcriptionJobs.set(jobId, { stage: 'transcribing', progress: 20 });
+        const transcript = await transcribeAudio(audioPath);
+
+        transcriptionJobs.set(jobId, { stage: 'extracting', progress: 60 });
+        const tickers = extractTickers(transcript);
+
+        transcriptionJobs.set(jobId, { stage: 'summarizing', progress: 75 });
+        const summary = await summarizeTranscript(transcript);
+
+        transcriptionJobs.set(jobId, { stage: 'saving', progress: 90 });
+        const note = writeNote({
+          id: generateId(),
+          date: new Date().toISOString().split('T')[0],
+          type: 'audio',
+          title: req.body?.title || `Morning Call — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+          content: transcript,
+          summary,
+          tickers,
+          tags: req.body?.tags ? JSON.parse(req.body.tags) : ['morning-call'],
+          audioFile: path.basename(audioPath),
+          createdAt: new Date().toISOString(),
+        });
+
+        transcriptionJobs.set(jobId, { stage: 'done', progress: 100, note });
+        // Clean up job after 5 minutes
+        setTimeout(() => transcriptionJobs.delete(jobId), 5 * 60 * 1000);
+      } catch (error) {
+        transcriptionJobs.set(jobId, { stage: 'error', progress: 0, error: error.message });
+      }
+    })();
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

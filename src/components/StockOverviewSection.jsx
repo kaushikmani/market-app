@@ -380,6 +380,93 @@ export const StockOverviewSection = ({ data, loading, error }) => {
         </div>
       )}
 
+      {/* Short Interest card */}
+      {(() => {
+        const shortFloat = data.fundamentals?.['Short Float'];
+        const shortRatio = data.fundamentals?.['Short Ratio'];
+        const shortInterest = data.fundamentals?.['Short Interest'];
+        const floatShares = data.fundamentals?.['Shs Float'];
+        if (!shortFloat && !shortRatio) return null;
+
+        // Parse short float % for color coding
+        const shortFloatNum = parseFloat((shortFloat || '').replace('%', ''));
+        const isHighShort = shortFloatNum >= 20;
+        const isMidShort = !isHighShort && shortFloatNum >= 10;
+        const shortColor = isHighShort ? Theme.colors.bearishRed
+          : isMidShort ? Theme.colors.accentAmber
+          : Theme.colors.secondaryText;
+        const shortBg = isHighShort ? Theme.colors.bearishRedBg
+          : isMidShort ? 'rgba(245, 166, 35, 0.08)'
+          : Theme.colors.surfaceSubtle;
+        const shortBorder = isHighShort ? Theme.colors.bearishRedBorder
+          : isMidShort ? 'rgba(245, 166, 35, 0.20)'
+          : Theme.colors.borderSubtle;
+
+        return (
+          <div className="card" style={{ padding: '12px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <span style={{
+                fontSize: '11px', fontWeight: 700, color: Theme.colors.tertiaryText,
+                textTransform: 'uppercase', letterSpacing: '0.06em',
+              }}>
+                Short Interest
+              </span>
+              {shortFloat && (
+                <span style={{
+                  fontSize: '11px', fontWeight: 800, padding: '2px 8px',
+                  borderRadius: Theme.radius.full,
+                  background: shortBg, color: shortColor, border: `1px solid ${shortBorder}`,
+                  fontFamily: 'var(--font-mono)',
+                }}>
+                  {shortFloat} of float
+                </span>
+              )}
+            </div>
+
+            {/* Short float bar */}
+            {!isNaN(shortFloatNum) && shortFloatNum > 0 && (
+              <div style={{ marginBottom: '12px' }}>
+                <div style={{
+                  height: '5px', borderRadius: Theme.radius.full,
+                  background: Theme.colors.cardBorder, position: 'relative', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0, height: '100%',
+                    width: `${Math.min(100, shortFloatNum * 2)}%`, // scale: 50%=100% bar
+                    background: isHighShort ? Theme.colors.bearishRed
+                      : isMidShort ? Theme.colors.accentAmber
+                      : Theme.colors.accentBlue,
+                    borderRadius: Theme.radius.full,
+                    transition: 'width 0.4s ease',
+                  }} />
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '24px' }}>
+              {shortRatio && (
+                <div className="flex justify-between items-center" style={{ padding: '5px 0', borderBottom: `1px solid ${Theme.colors.borderSubtle}` }}>
+                  <span style={{ fontSize: '11px', fontWeight: 500, color: Theme.colors.secondaryText }}>Days to Cover</span>
+                  <span className="tabular-nums" style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText }}>{shortRatio}</span>
+                </div>
+              )}
+              {shortInterest && (
+                <div className="flex justify-between items-center" style={{ padding: '5px 0', borderBottom: `1px solid ${Theme.colors.borderSubtle}` }}>
+                  <span style={{ fontSize: '11px', fontWeight: 500, color: Theme.colors.secondaryText }}>Shares Short</span>
+                  <span className="tabular-nums" style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText }}>{shortInterest}</span>
+                </div>
+              )}
+              {floatShares && (
+                <div className="flex justify-between items-center" style={{ padding: '5px 0', borderBottom: `1px solid ${Theme.colors.borderSubtle}` }}>
+                  <span style={{ fontSize: '11px', fontWeight: 500, color: Theme.colors.secondaryText }}>Float</span>
+                  <span className="tabular-nums" style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText }}>{floatShares}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 52W Range card */}
       {(w52High || w52Low) && (
         <div className="card" style={{ padding: '12px 16px' }}>

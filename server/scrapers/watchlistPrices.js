@@ -1,24 +1,20 @@
-import { polygonGet } from '../services/polygon.js';
+import { getQuotes } from '../services/schwab.js';
 
 export async function fetchWatchlistPrices(tickers) {
   if (!tickers?.length) return {};
-
-  // Polygon allows all tickers in one snapshot call (up to 1000)
-  const data = await polygonGet('/v2/snapshot/locale/us/markets/stocks/tickers', {
-    tickers: tickers.join(','),
-  });
+  const quotes = await getQuotes(tickers);
 
   const results = {};
-  for (const t of data.tickers || []) {
-    results[t.ticker] = {
-      price: t.min?.c || t.lastTrade?.p || t.day?.c,
-      changePct: t.todaysChangePerc,
-      change: t.todaysChange,
-      bid: t.lastQuote?.p || null,
-      ask: t.lastQuote?.P || null,
-      volume: t.day?.v || null,
-      preMarketChangePct: null,
-      postMarketChangePct: null,
+  for (const [ticker, q] of Object.entries(quotes)) {
+    results[ticker] = {
+      price:               q.price,
+      changePct:           q.changePct,
+      change:              q.change,
+      bid:                 q.bid,
+      ask:                 q.ask,
+      volume:              q.volume,
+      preMarketChangePct:  q.preMarketChangePct,
+      postMarketChangePct: q.postMarketChangePct,
     };
   }
   return results;

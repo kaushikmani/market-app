@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -22,17 +23,35 @@ import { fetchSubstackFeed } from './scrapers/substackFeed.js';
 import { scrapePreMarketMovers } from './scrapers/preMarketMovers.js';
 import { scanGaps } from './scrapers/gapScanner.js';
 import { fetchWatchlistPrices } from './scrapers/watchlistPrices.js';
-import { runAlertCheck } from './services/alertMonitor.js';
+import { runAlertCheck, getRecentTriggers, clearTrigger } from './services/alertMonitor.js';
 import { fetchEarningsCalendar } from './scrapers/earningsCalendar.js';
 import { fetchMarketSentiment } from './scrapers/marketSentiment.js';
 import { callGemini } from './services/whisperService.js';
 import notesRouter from './routes/notes.js';
 import { WATCHLIST } from './data/watchlist.js';
-import { polygonGet } from './services/polygon.js';
+import { getQuotes, getMarketStatus as schwabMarketStatus } from './services/schwab.js';
 import { fetchEarningsHistory } from './scrapers/earningsHistory.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,       // 1 minute window
+  max: 120,                  // 120 requests per minute per IP (2/sec average)
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' },
+});
+// Stricter limit for expensive AI/scrape endpoints
+const heavyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests for this endpoint.' },
+});
+app.use('/api/', apiLimiter);
 
 // ── Disk cache — persists slow data across server restarts ────────────────────
 const DISK_CACHE_DIR = path.join(__dirname, 'data', 'page-cache');
@@ -154,33 +173,23 @@ app.get('/api/stock-news', async (req, res) => {
   if (tickerErr) return res.status(400).json({ error: tickerErr });
 
   try {
-    // Fetch all sources in parallel: Google News + Finviz News + X Posts + Polygon News
-    const [googleRes, finvizRes, xRes, polygonRes] = await Promise.allSettled([
+    // Fetch all sources in parallel: Google News + Finviz News + X Posts
+    const [googleRes, finvizRes, xRes] = await Promise.allSettled([
       scrapeGoogleNews(ticker),
       scrapeFinvizNews(ticker),
       scrapeXPosts(ticker),
-      polygonGet('/v2/reference/news', { ticker: ticker.toUpperCase(), limit: 10, order: 'desc', sort: 'published_utc' }),
     ]);
 
     const googleNews = googleRes.status === 'fulfilled' && googleRes.value.success ? googleRes.value.news : [];
     const finvizNews = finvizRes.status === 'fulfilled' && finvizRes.value.success ? finvizRes.value.news : [];
-    const xPosts = xRes.status === 'fulfilled' && xRes.value.success ? xRes.value.news : [];
-    const polygonNews = polygonRes.status === 'fulfilled'
-      ? (polygonRes.value.results || []).map(n => ({
-          title: n.title,
-          url: n.article_url,
-          source: n.publisher?.name || 'Polygon',
-          time: n.published_utc,
-          tickers: n.tickers || [],
-        }))
-      : [];
+    const xPosts     = xRes.status === 'fulfilled' && xRes.value.success ? xRes.value.news : [];
 
     res.json({
       ticker: ticker.toUpperCase(),
       google: googleNews,
       finviz: finvizNews,
       x: xPosts,
-      polygon: polygonNews,
+      polygon: [], // removed — no longer using Polygon
       success: true,
     });
   } catch (error) {
@@ -217,7 +226,7 @@ app.get('/api/sma', async (req, res) => {
   }
 });
 
-app.get('/api/earnings-preview', async (req, res) => {
+app.get('/api/earnings-preview', heavyLimiter, async (req, res) => {
   const { ticker } = req.query;
   const tickerErr = validateTicker(ticker);
   if (tickerErr) return res.status(400).json({ error: tickerErr });
@@ -329,6 +338,16 @@ app.get('/api/market-sentiment', async (req, res) => {
   } catch (error) {
     if (!disk) res.status(500).json({ error: error.message });
   }
+});
+
+// Alerts — poll for recent triggers, then clear them
+app.get('/api/alerts/triggered', (req, res) => {
+  const triggers = getRecentTriggers();
+  res.json({ triggers });
+});
+app.delete('/api/alerts/triggered/:id', (req, res) => {
+  clearTrigger(req.params.id);
+  res.json({ success: true });
 });
 
 // Alerts CRUD
@@ -691,14 +710,15 @@ app.get('/api/watchlist-prices', async (req, res) => {
   }
 });
 
-// Market status from Polygon
+// Market status from Schwab
 app.get('/api/market-status', async (req, res) => {
   try {
-    const data = await polygonGet('/v1/marketstatus/now');
+    const data = await schwabMarketStatus();
     res.json({
-      market: data.market,
-      serverTime: data.serverTime,
-      exchanges: data.exchanges,
+      market:      data.isOpen ? 'open' : 'closed',
+      isOpen:      data.isOpen,
+      serverTime:  new Date().toISOString(),
+      sessionHours: data.sessionHours,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -711,30 +731,37 @@ app.get('/api/ticker-info', async (req, res) => {
   const tickerErr = validateTicker(ticker);
   if (tickerErr) return res.status(400).json({ error: tickerErr });
   try {
-    const data = await polygonGet(`/v3/reference/tickers/${ticker.toUpperCase()}`);
-    const r = data.results || {};
+    const quotes = await getQuotes([ticker.toUpperCase()]);
+    const q = quotes[ticker.toUpperCase()] || {};
     res.json({
-      name: r.name,
-      description: r.description,
-      marketCap: r.market_cap,
-      shareClassSharesOutstanding: r.share_class_shares_outstanding,
-      totalEmployees: r.total_employees,
-      listDate: r.list_date,
-      homepageUrl: r.homepage_url,
-      sicDescription: r.sic_description,
+      price:     q.price,
+      change:    q.change,
+      changePct: q.changePct,
+      volume:    q.volume,
+      high52w:   q.high52w,
+      low52w:    q.low52w,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// Earnings history + expected move
+// Earnings history + expected move — cached per ticker for 4 hours
+const earningsHistoryCache = new Map(); // ticker → { data, ts }
+const EARNINGS_HISTORY_TTL = 4 * 60 * 60 * 1000;
+
 app.get('/api/earnings-history', async (req, res) => {
   const { ticker } = req.query;
   const tickerErr = validateTicker(ticker);
   if (tickerErr) return res.status(400).json({ error: tickerErr });
   try {
-    const data = await fetchEarningsHistory(ticker);
+    const upper = ticker.toUpperCase();
+    const cached = earningsHistoryCache.get(upper);
+    if (cached && Date.now() - cached.ts < EARNINGS_HISTORY_TTL) {
+      return res.json(cached.data);
+    }
+    const data = await fetchEarningsHistory(upper);
+    earningsHistoryCache.set(upper, { data, ts: Date.now() });
     res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });

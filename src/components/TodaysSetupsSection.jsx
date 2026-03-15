@@ -87,6 +87,20 @@ const SETUP_CONFIG = {
     icon: '↺',
     category: 'bullish',
   },
+  downtrend_break: {
+    color: '#22c55e',
+    bg: 'rgba(34, 197, 94, 0.06)',
+    border: 'rgba(34, 197, 94, 0.15)',
+    icon: '↗',
+    category: 'bullish',
+  },
+  uptrend_break: {
+    color: Theme.colors.bearishRed,
+    bg: 'rgba(255, 92, 92, 0.06)',
+    border: 'rgba(255, 92, 92, 0.12)',
+    icon: '↘',
+    category: 'bearish',
+  },
   breakdown: {
     color: Theme.colors.bearishRed,
     bg: 'rgba(255, 92, 92, 0.06)',
@@ -444,10 +458,15 @@ export function TodaysSetupsSection({ data, loading, error, onTickerClick }) {
     <div>
       {/* Stats */}
       {data && (
-        <div style={{ marginBottom: '10px' }}>
+        <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>
             {data.scanned} scanned · {data.flagged} flagged{data.noteSetups > 0 ? ` · ${data.noteSetups} from notes` : ''}{data.earningsFiltered > 0 ? ` · ${data.earningsFiltered} hidden (earnings)` : ''}{data.errors > 0 ? ` · ${data.errors} errors` : ''}
           </span>
+          {data.scannedAt && (
+            <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText, flexShrink: 0 }}>
+              Updated {new Date(data.scannedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })} ET
+            </span>
+          )}
         </div>
       )}
 

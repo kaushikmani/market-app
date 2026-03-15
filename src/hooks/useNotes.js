@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ApiService } from '../services/ApiService';
 
 export function useNotes(days = 5) {
@@ -6,6 +6,9 @@ export function useNotes(days = 5) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState(null);  // null | 'transcribing' | 'extracting' | 'summarizing' | 'saving' | 'done' | 'error'
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const pollRef = useRef(null);
   const [brief, setBrief] = useState(null);
   const [briefLoading, setBriefLoading] = useState(true);
 
@@ -48,16 +51,43 @@ export function useNotes(days = 5) {
   }, []);
 
   const uploadAudio = useCallback(async (file, title) => {
-    try {
-      setUploading(true);
-      const data = await ApiService.uploadAudio(file, title);
-      if (data.success) {
-        setNotes(prev => [data.note, ...prev]);
-      }
-      return data;
-    } finally {
-      setUploading(false);
-    }
+    setUploading(true);
+    setUploadStage('transcribing');
+    setUploadProgress(10);
+
+    const { jobId } = await ApiService.uploadAudio(file, title);
+
+    // Poll for status
+    return new Promise((resolve, reject) => {
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await ApiService.getTranscriptionStatus(jobId);
+          setUploadStage(status.stage);
+          setUploadProgress(status.progress || 0);
+
+          if (status.stage === 'done') {
+            clearInterval(pollRef.current);
+            setUploading(false);
+            setUploadStage(null);
+            setUploadProgress(0);
+            if (status.note) setNotes(prev => [status.note, ...prev]);
+            resolve({ success: true, note: status.note });
+          } else if (status.stage === 'error') {
+            clearInterval(pollRef.current);
+            setUploading(false);
+            setUploadStage(null);
+            setUploadProgress(0);
+            reject(new Error(status.error || 'Transcription failed'));
+          }
+        } catch (e) {
+          clearInterval(pollRef.current);
+          setUploading(false);
+          setUploadStage(null);
+          setUploadProgress(0);
+          reject(e);
+        }
+      }, 2000); // poll every 2s
+    });
   }, []);
 
   const uploadImages = useCallback(async (files, title, content) => {
@@ -119,6 +149,8 @@ export function useNotes(days = 5) {
     loading,
     error,
     uploading,
+    uploadStage,
+    uploadProgress,
     brief,
     briefLoading,
     createNote,
