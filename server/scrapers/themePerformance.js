@@ -1,7 +1,7 @@
 import { getQuotes, getPriceHistory } from '../services/schwab.js';
 
 const THEMES = [
-  { name: 'Mega Cap Tech',          tickers: ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'] },
+  { name: 'Mag7',                   tickers: ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'] },
   { name: 'Cybersecurity',          tickers: ['CRWD', 'PANW', 'FTNT', 'ZS', 'OKTA', 'S', 'RBRK'] },
   { name: 'Storage & Memory',       tickers: ['MU', 'WDC', 'STX', 'SNDK', 'PSTG'] },
   { name: 'Chip Design & Processors', tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'TSM', 'GFS'] },
@@ -73,9 +73,9 @@ export async function fetchThemePerformance(range = 'today') {
     const startMs   = startDate.getTime();
     const endMs     = startDate.getTime() + 3 * 86400_000; // include a few days forward to handle holidays
 
-    // Batch fetch price history for all tickers (parallel, but in chunks to be safe)
+    // Batch fetch price history for all tickers (small chunks + delay to avoid 429)
     startPriceMap = {};
-    const CHUNK = 50;
+    const CHUNK = 8;
     for (let i = 0; i < allTickers.length; i += CHUNK) {
       const chunk = allTickers.slice(i, i + CHUNK);
       await Promise.all(chunk.map(async (ticker) => {
@@ -84,6 +84,7 @@ export async function fetchThemePerformance(range = 'today') {
           if (candles.length > 0) startPriceMap[ticker] = candles[0].c;
         } catch { /* skip on error */ }
       }));
+      if (i + CHUNK < allTickers.length) await new Promise(r => setTimeout(r, 250));
     }
   }
 

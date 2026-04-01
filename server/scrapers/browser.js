@@ -13,6 +13,8 @@ const CHROME_ARGS = [
   '--disable-blink-features=AutomationControlled',
 ];
 
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
 async function ensureProfileDir() {
   await fs.mkdir(PROFILE_DIR, { recursive: true });
 }
@@ -44,6 +46,7 @@ async function launchBrowser() {
       args: CHROME_ARGS,
       viewport: { width: 1280, height: 800 },
       ignoreDefaultArgs: ['--enable-automation'],
+      userAgent: USER_AGENT,
     });
   } catch (e) {
     if (e.message?.includes('ProcessSingleton') || e.message?.includes('database is locked')) {
@@ -66,6 +69,22 @@ async function launchBrowser() {
   } else {
     console.log('[Browser] Using saved browser session (headless).');
   }
+
+  // Mask headless fingerprints so sites like X don't block rendering
+  await browserContext.addInitScript(() => {
+    // Fix outer dimensions (0 in headless)
+    Object.defineProperty(window, 'outerWidth',  { get: () => 1280 });
+    Object.defineProperty(window, 'outerHeight', { get: () => 800 });
+    // Fake plugins so navigator.plugins.length > 0
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => [{ name: 'Chrome PDF Plugin' }, { name: 'Chrome PDF Viewer' }, { name: 'Native Client' }],
+    });
+    Object.defineProperty(navigator, 'mimeTypes', { get: () => [{ type: 'application/pdf' }] });
+    // Ensure window.chrome exists (real Chrome sets this)
+    if (!window.chrome) {
+      window.chrome = { runtime: {} };
+    }
+  });
 
   // Auto-reset when browser exits unexpectedly
   browserContext.on('close', () => {
@@ -104,6 +123,7 @@ export async function openLoginBrowser() {
     args: CHROME_ARGS,
     viewport: { width: 1280, height: 800 },
     ignoreDefaultArgs: ['--enable-automation'],
+    userAgent: USER_AGENT,
   });
 
   const page1 = await ctx.newPage();

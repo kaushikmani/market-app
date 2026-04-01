@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { Theme } from '../models/Theme';
 import { useNotes } from '../hooks/useNotes';
 import { ApiService } from '../services/ApiService';
@@ -422,6 +422,123 @@ const NoteCard = ({ note, onTickerClick, onDelete, onUpdate }) => {
             <TagPill key={t} tag={t} />
           ))}
         </div>
+      )}
+    </div>
+  );
+};
+
+// ── 3-day Gemini Notes Summary ────────────────────────────────────────────────
+const NotesSummary = ({ onRefreshTrigger }) => {
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async (force = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await ApiService.getNotesSummary(force);
+      setSummary(data.summary || null);
+      setLoaded(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Auto-load when parent signals a note was added
+  useEffect(() => {
+    if (onRefreshTrigger > 0) load(true);
+  }, [onRefreshTrigger, load]);
+
+  if (!loaded && !loading) {
+    return (
+      <div className="card" style={{ padding: '14px 16px', borderLeft: `3px solid ${Theme.colors.accentPurple}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.accentPurple, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              3-Day Summary
+            </span>
+            <div style={{ fontSize: '10px', color: Theme.colors.tertiaryText, marginTop: '2px' }}>
+              Gemini summary of all your notes from the last 3 days
+            </div>
+          </div>
+          <button
+            onClick={() => load(false)}
+            style={{
+              background: Theme.colors.accentPurpleDim,
+              border: `1px solid rgba(167, 139, 250, 0.25)`,
+              borderRadius: '4px',
+              color: Theme.colors.accentPurple,
+              fontSize: '10px',
+              fontWeight: 700,
+              padding: '4px 12px',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Generate
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card" style={{ padding: '14px 16px', borderLeft: `3px solid ${Theme.colors.accentPurple}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: summary ? '12px' : 0 }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.accentPurple, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          3-Day Summary
+        </span>
+        <button
+          onClick={() => load(true)}
+          disabled={loading}
+          style={{
+            background: 'transparent',
+            border: `1px solid ${Theme.colors.cardBorder}`,
+            borderRadius: '4px',
+            color: loading ? Theme.colors.tertiaryText : Theme.colors.secondaryText,
+            fontSize: '10px',
+            fontWeight: 600,
+            padding: '3px 10px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={e => { if (!loading) { e.currentTarget.style.borderColor = Theme.colors.accentPurple; e.currentTarget.style.color = Theme.colors.accentPurple; } }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = Theme.colors.cardBorder; e.currentTarget.style.color = Theme.colors.secondaryText; }}
+        >
+          {loading ? 'Generating...' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ fontSize: '11px', color: Theme.colors.bearishRed }}>{error}</div>
+      )}
+
+      {loading && !summary && (
+        <div style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>Analyzing 3 days of notes...</div>
+      )}
+
+      {summary && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {summary.split('\n\n').filter(Boolean).map((para, i) => (
+            <p key={i} style={{
+              fontSize: '12px',
+              color: Theme.colors.secondaryText,
+              lineHeight: 1.65,
+              margin: 0,
+            }}>
+              {para}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {!loading && loaded && !summary && !error && (
+        <div style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>No notes found in the last 3 days.</div>
       )}
     </div>
   );
@@ -1370,6 +1487,7 @@ export const TradingNotesSection = ({ onTickerClick }) => {
   const [selectedTicker, setSelectedTicker] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [summaryRefreshTrigger, setSummaryRefreshTrigger] = useState(0);
 
   // Count today's notes (excludes plan type to avoid circular dependency)
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -1407,6 +1525,7 @@ export const TradingNotesSection = ({ onTickerClick }) => {
   const handleCreate = async (data) => {
     try {
       await createNote(data);
+      setSummaryRefreshTrigger(t => t + 1);
     } catch (err) {
       alert('Failed to save note: ' + err.message);
     }
@@ -1491,6 +1610,9 @@ export const TradingNotesSection = ({ onTickerClick }) => {
 
       {/* Today's Game Plan — always shown, generates from today's notes */}
       {!loading && <TodayGamePlan todayNoteCount={todayNoteCount} onTickerClick={onTickerClick} />}
+
+      {/* 3-Day Gemini Summary */}
+      {!loading && <NotesSummary onRefreshTrigger={summaryRefreshTrigger} />}
 
       {/* Add note button / form */}
       {showAddForm ? (

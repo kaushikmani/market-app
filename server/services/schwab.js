@@ -23,10 +23,22 @@ function updateEnv(key, value) {
 
 // ── Token management ─────────────────────────────────────────────────────────
 
+function readEnvValue(key) {
+  try {
+    const content = fs.readFileSync(ENV_PATH, 'utf-8');
+    const match = content.match(new RegExp(`^${key}=(.*)$`, 'm'));
+    return match ? match[1].trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function refreshAccessToken() {
   const clientId     = process.env.SCHWAB_CLIENT_ID;
   const clientSecret = process.env.SCHWAB_CLIENT_SECRET;
-  const refreshToken = process.env.SCHWAB_REFRESH_TOKEN;
+  // Always read from .env file directly — process.env may be stale if schwab-auth.js
+  // was run while the server was already running
+  const refreshToken = readEnvValue('SCHWAB_REFRESH_TOKEN') || process.env.SCHWAB_REFRESH_TOKEN;
 
   if (!refreshToken) throw new Error('No SCHWAB_REFRESH_TOKEN — run node schwab-auth.js');
 
@@ -42,13 +54,21 @@ async function refreshAccessToken() {
     body,
   });
 
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Token refresh failed: ${res.status} — ${text.slice(0, 200)}`);
+  }
+
   const tokens = await res.json();
   if (tokens.error) throw new Error(`Token refresh failed: ${tokens.error_description || tokens.error}`);
 
   const expiresAt = Date.now() + (tokens.expires_in || 1800) * 1000;
   updateEnv('SCHWAB_ACCESS_TOKEN',    tokens.access_token);
   updateEnv('SCHWAB_TOKEN_EXPIRES_AT', String(expiresAt));
-  if (tokens.refresh_token) updateEnv('SCHWAB_REFRESH_TOKEN', tokens.refresh_token);
+  if (tokens.refresh_token) {
+    updateEnv('SCHWAB_REFRESH_TOKEN', tokens.refresh_token);
+    updateEnv('SCHWAB_REFRESH_TOKEN_ISSUED_AT', String(Date.now()));
+  }
 
   console.log('[Schwab] Access token refreshed');
   return tokens.access_token;
@@ -146,6 +166,59 @@ export async function getPriceHistory(ticker, { days = 400, startDate, endDate }
     c: c.close,
     v: c.volume,
   }));
+}
+
+// ── Options chain summary ─────────────────────────────────────────────────────
+// Returns: { iv, callOI, putOI, callVolume, putVolume, putCallRatio, success }
+
+export async function getOptionsChain(ticker) {
+  const data = await schwabGet('/chains', {
+    symbol:          ticker.toUpperCase(),
+    contractType:    'ALL',
+    strikeCount:     10,
+    optionType:      'ALL',
+    includeUnderlyingQuote: false,
+  });
+
+  if (!data || data.status === 'FAILED') {
+    return { success: false, error: 'Options data unavailable' };
+  }
+
+  let callOI = 0, putOI = 0, callVolume = 0, putVolume = 0;
+
+  const sumMap = (expMap) => {
+    if (!expMap) return;
+    for (const strikes of Object.values(expMap)) {
+      for (const contracts of Object.values(strikes)) {
+        for (const c of contracts) {
+          const oi  = c.openInterest  ?? 0;
+          const vol = c.totalVolume   ?? 0;
+          if (c.putCall === 'CALL') { callOI += oi; callVolume += vol; }
+          else                      { putOI  += oi; putVolume  += vol; }
+        }
+      }
+    }
+  };
+
+  sumMap(data.callExpDateMap);
+  sumMap(data.putExpDateMap);
+
+  const totalOI  = callOI  + putOI;
+  const putCallRatio = callOI > 0 ? Math.round((putOI / callOI) * 100) / 100 : null;
+  const iv = data.volatility != null ? Math.round(data.volatility * 10) / 10 : null;
+
+  return {
+    success:       true,
+    iv,
+    callOI,
+    putOI,
+    totalOI,
+    callVolume,
+    putVolume,
+    putCallRatio,
+    underlyingPrice: data.underlyingPrice ?? null,
+    numberOfContracts: data.numberOfContracts ?? null,
+  };
 }
 
 // ── Market movers ─────────────────────────────────────────────────────────────

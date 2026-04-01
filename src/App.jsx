@@ -17,6 +17,7 @@ import { ThemePerformanceSection } from './components/ThemePerformanceSection';
 import { WatchlistSidebar } from './components/WatchlistSidebar';
 import { TradingNotesSection } from './components/TradingNotesSection';
 import { KeyLevelsSection } from './components/KeyLevelsSection';
+import { OptionsSection } from './components/OptionsSection';
 import { OutlookSection } from './components/OutlookSection';
 import { EarningsPreviewSection } from './components/EarningsPreviewSection';
 import { EarningsHistorySection } from './components/EarningsHistorySection';
@@ -24,8 +25,12 @@ import { StockNotesSection } from './components/StockNotesSection';
 import { StockChart } from './components/StockChart';
 import { ChartModal } from './components/ChartModal';
 import { EarningsCalendarSection } from './components/EarningsCalendarSection';
+import { TradingRulesSection } from './components/TradingRulesSection';
+import { MarketNarrativeSection } from './components/MarketNarrativeSection';
 import { MarketSentimentSection } from './components/MarketSentimentSection';
 import { AlertsPanel } from './components/AlertsPanel';
+import { CredentialsStatus } from './components/CredentialsStatus';
+import { JournalSection } from './components/JournalSection';
 import { AlertToast } from './components/AlertToast';
 import { ApiService } from './services/ApiService';
 import { useMarketData } from './hooks/useMarketData';
@@ -43,9 +48,10 @@ import {
 
 
 const TABS = [
-  { key: 'market', label: 'Morning Brief' },
+  { key: 'market', label: 'Overview' },
   { key: 'stock', label: 'Stocks' },
-  { key: 'notes', label: 'Journal' },
+  { key: 'journal', label: 'Journal' },
+  { key: 'notes', label: 'Notes' },
   { key: 'outlook', label: 'Outlook' },
 ];
 
@@ -258,7 +264,7 @@ function App() {
         paddingBottom: '60px',
       }}>
         {/* Tab navigation */}
-        <div style={{ padding: '16px 20px 0' }}>
+        <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="flex items-center gap-1" style={{
             background: Theme.colors.cardBackground,
             borderRadius: Theme.radius.md,
@@ -290,6 +296,7 @@ function App() {
               );
             })}
           </div>
+          <CredentialsStatus />
         </div>
 
         {/* ═══════════════════════════════════ */}
@@ -298,9 +305,13 @@ function App() {
         {activeTab === 'market' && (
           <div style={{ padding: '0 20px' }}>
 
-            {/* ── 1. Greeting + market status ── */}
-            {/* ── 1. Theme Performance — sector rotation context ── */}
+            {/* ── 0. Trading Rules — read every morning ── */}
             <div style={{ paddingTop: '20px' }}>
+              <TradingRulesSection />
+            </div>
+
+            {/* ── 1. Theme Performance — sector rotation context ── */}
+            <div style={{ marginTop: '20px' }}>
               <ThemePerformanceSection onTickerClick={handleTickerClick} onChartClick={setChartModalTicker} />
             </div>
 
@@ -310,6 +321,11 @@ function App() {
             </div>
             <div style={{ marginTop: '8px' }}>
               <MarketSentimentSection />
+            </div>
+
+            {/* ── 2b. AI Market Narrative ── */}
+            <div style={{ marginTop: '16px' }}>
+              <MarketNarrativeSection />
             </div>
 
             {/* ── 3. Twitter / X Feed ── */}
@@ -507,6 +523,8 @@ function App() {
 
               <KeyLevelsSection smaData={smaData} ticker={ticker} />
 
+              {ticker && <OptionsSection ticker={ticker} />}
+
               <SectionDivider title="Peers" subtitle={loadingPeers ? 'Loading...' : ''} />
               <SimilarStocksSection
                 data={finvizPeers}
@@ -530,6 +548,15 @@ function App() {
               <StockNewsSection data={stockNews} loading={loadingNews} error={errors.stockNews} />
 
             </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════ */}
+        {/* JOURNAL TAB                         */}
+        {/* ═══════════════════════════════════ */}
+        {activeTab === 'journal' && (
+          <div style={{ padding: '0 20px' }}>
+            <JournalSection />
           </div>
         )}
 

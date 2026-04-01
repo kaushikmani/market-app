@@ -48,10 +48,42 @@ function formatCrosshairDate(timestamp) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+function calcRSLine(stockCandles, spyCandles) {
+  const spyMap = {};
+  for (const c of spyCandles) spyMap[c.time] = c.close;
+
+  let stockBase = null;
+  let spyBase = null;
+  for (const c of stockCandles) {
+    if (spyMap[c.time] != null && stockBase === null) {
+      stockBase = c.close;
+      spyBase = spyMap[c.time];
+    }
+  }
+  if (!stockBase || !spyBase) return [];
+
+  return stockCandles
+    .filter(c => spyMap[c.time] != null)
+    .map(c => ({
+      time: c.time,
+      value: Math.round(((c.close / stockBase) / (spyMap[c.time] / spyBase)) * 10000) / 100,
+    }));
+}
+
 export function StockChart({ smaData, ticker, loading }) {
   const containerRef = useRef(null);
   const tooltipRef = useRef(null);
   const [timeframe, setTimeframe] = useState('D');
+  const [rsMode, setRsMode] = useState(false);
+  const [spyCandles, setSpyCandles] = useState(null);
+
+  useEffect(() => {
+    if (!rsMode || spyCandles) return;
+    fetch('/api/sma?ticker=SPY')
+      .then(r => r.json())
+      .then(data => { if (data?.candles?.length) setSpyCandles(data.candles); })
+      .catch(() => {});
+  }, [rsMode, spyCandles]);
 
   useEffect(() => {
     if (!containerRef.current || !smaData?.candles?.length) return;
@@ -60,6 +92,10 @@ export function StockChart({ smaData, ticker, loading }) {
       ? toWeeklyCandles(smaData.candles)
       : [...smaData.candles];
 
+    const spyCandlesForFrame = rsMode && spyCandles
+      ? (timeframe === 'W' ? toWeeklyCandles(spyCandles) : [...spyCandles])
+      : null;
+
     // Build a lookup map for OHLCV by time key
     const candleMap = {};
     for (const c of candles) candleMap[c.time] = c;
@@ -67,6 +103,12 @@ export function StockChart({ smaData, ticker, loading }) {
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: 340,
+      leftPriceScale: {
+        visible: !!(rsMode && spyCandlesForFrame),
+        borderColor: Theme.colors.cardBorder,
+        textColor: Theme.colors.tertiaryText,
+        scaleMargins: { top: 0.1, bottom: 0.1 },
+      },
       layout: {
         background: { color: Theme.colors.cardBackground },
         textColor: Theme.colors.secondaryText,
@@ -120,6 +162,22 @@ export function StockChart({ smaData, ticker, loading }) {
         crosshairMarkerVisible: false,
       });
       lineSeries.setData(lineData);
+    }
+
+    if (spyCandlesForFrame) {
+      const rsData = calcRSLine(candles, spyCandlesForFrame);
+      if (rsData.length > 0) {
+        const rsSeries = chart.addLineSeries({
+          priceScaleId: 'left',
+          color: '#f59e0b',
+          lineWidth: 1,
+          lastValueVisible: true,
+          priceLineVisible: false,
+          crosshairMarkerVisible: false,
+          title: 'RS vs SPY',
+        });
+        rsSeries.setData(rsData);
+      }
     }
 
     chart.timeScale().fitContent();
@@ -209,7 +267,7 @@ export function StockChart({ smaData, ticker, loading }) {
       chart.remove();
       if (tooltip) tooltip.style.display = 'none';
     };
-  }, [smaData, timeframe]);
+  }, [smaData, timeframe, rsMode, spyCandles]);
 
   const hasData = !loading && smaData?.candles?.length > 0;
 
@@ -232,7 +290,35 @@ export function StockChart({ smaData, ticker, loading }) {
                 </span>
               </div>
             ))}
+            {rsMode && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '14px', height: '2px', background: '#f59e0b', borderRadius: '1px' }} />
+                <span style={{ fontSize: '9px', color: '#f59e0b', fontWeight: 500 }}>RS</span>
+              </div>
+            )}
           </div>
+        )}
+
+        {/* RS toggle */}
+        {hasData && (
+          <span
+            onClick={() => setRsMode(m => !m)}
+            title="Relative Strength vs SPY"
+            style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '3px 8px',
+              borderRadius: Theme.radius.xs,
+              cursor: 'pointer',
+              background: rsMode ? 'rgba(245,158,11,0.15)' : 'transparent',
+              color: rsMode ? '#f59e0b' : Theme.colors.tertiaryText,
+              border: `1px solid ${rsMode ? 'rgba(245,158,11,0.4)' : 'transparent'}`,
+              transition: 'all 0.15s ease',
+              userSelect: 'none',
+            }}
+          >
+            RS
+          </span>
         )}
 
         {/* Timeframe tabs */}

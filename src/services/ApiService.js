@@ -166,4 +166,26 @@ export const ApiService = {
 
   getEarningsHistory: (ticker) =>
     fetchJson(`${API_BASE}/earnings-history?ticker=${encodeURIComponent(ticker)}`),
+
+  getNotesSummary: (force = false) =>
+    fetchJson(`${API_BASE}/notes/summary${force ? '?force=true' : ''}`),
+
+  getRules: () =>
+    fetchJson(`${API_BASE}/rules`),
+
+  saveRules: (rules) =>
+    fetch(`${API_BASE}/rules`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rules }),
+    }).then(r => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); }),
+
+  getMarketNarrative: (force = false) =>
+    fetchJson(`${API_BASE}/market-narrative${force ? '?force=true' : ''}`),
+
+  getSetupScore: (force = false) =>
+    fetchJson(`${API_BASE}/setup-score${force ? '?force=true' : ''}`),
+
+  getTradeIdeas: (force = false) =>
+    fetchJson(`${API_BASE}/trade-ideas${force ? '?force=true' : ''}`),
 };

@@ -73,38 +73,80 @@ Rules:
 Content:
 `;
 
-export async function callGemini(prompt, retries = 2) {
+// Global rate limiter: max 12 requests/min (stays under free tier 15 RPM limit)
+const GEMINI_MIN_INTERVAL = 5000; // 5s between requests = 12/min
+let lastGeminiCall = 0;
+let geminiQueue = Promise.resolve();
+
+function enqueueGemini(fn) {
+  geminiQueue = geminiQueue.then(async () => {
+    const now = Date.now();
+    const wait = GEMINI_MIN_INTERVAL - (now - lastGeminiCall);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastGeminiCall = Date.now();
+    return fn();
+  });
+  return geminiQueue;
+}
+
+async function _callGeminiOnce(prompt) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
+      }),
+    }
+  );
+
+  if (res.status === 429) return { rateLimited: true };
+  if (!res.ok) { console.error('[Gemini] API error:', res.status); return null; }
+
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+}
+
+export async function callGemini(prompt, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
-          }),
-        }
-      );
-
-      if (res.status === 429) {
-        const wait = (i + 1) * 20000; // 20s, 40s — fail fast so rule-based fallbacks kick in
+      const result = await enqueueGemini(() => _callGeminiOnce(prompt));
+      if (result && typeof result === 'object' && result.rateLimited) {
+        const wait = (i + 1) * 20000;
         console.log(`[Gemini] Rate limited, retrying in ${wait / 1000}s...`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
-
-      if (!res.ok) {
-        console.error('[Gemini] API error:', res.status);
-        return null;
-      }
-
-      const data = await res.json();
-      return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+      return result;
     } catch (error) {
       console.error('[Gemini] Request failed:', error.message);
       if (i < retries - 1) await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+  return null;
+}
+
+/**
+ * Direct Gemini call — bypasses the background queue.
+ * Use for user-triggered requests (game plan, Q&A) so they aren't
+ * blocked behind startup background scraper calls.
+ */
+export async function callGeminiDirect(prompt, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const result = await _callGeminiOnce(prompt);
+      if (result && typeof result === 'object' && result.rateLimited) {
+        const wait = (i + 1) * 15000;
+        console.log(`[Gemini/direct] Rate limited, retrying in ${wait / 1000}s...`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      return result;
+    } catch (error) {
+      console.error('[Gemini/direct] Request failed:', error.message);
+      if (i < retries - 1) await new Promise(r => setTimeout(r, 3000));
     }
   }
   return null;

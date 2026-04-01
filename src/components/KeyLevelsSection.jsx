@@ -71,8 +71,10 @@ const LevelRow = ({ label, value, pct, isResistance }) => {
 
 export const KeyLevelsSection = ({ smaData, ticker }) => {
   const levels = useMemo(() => {
-    const bars = smaData?.bars;
-    if (!bars || bars.length < 20) return null;
+    // candles are chronological (oldest → newest); reverse so index 0 = most recent
+    const raw = smaData?.candles;
+    if (!raw || raw.length < 20) return null;
+    const bars = [...raw].reverse();
 
     const currentPrice = bars[0]?.close ?? bars[0]?.c;
     if (!currentPrice) return null;
@@ -130,7 +132,7 @@ export const KeyLevelsSection = ({ smaData, ticker }) => {
     };
   }, [smaData]);
 
-  const bars = smaData?.bars;
+  const bars = smaData?.candles;
   if (!bars || bars.length < 20) {
     return (
       <div className="card" style={{ padding: '14px 16px' }}>

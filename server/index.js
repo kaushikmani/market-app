@@ -26,10 +26,11 @@ import { fetchWatchlistPrices } from './scrapers/watchlistPrices.js';
 import { runAlertCheck, getRecentTriggers, clearTrigger } from './services/alertMonitor.js';
 import { fetchEarningsCalendar } from './scrapers/earningsCalendar.js';
 import { fetchMarketSentiment } from './scrapers/marketSentiment.js';
-import { callGemini } from './services/whisperService.js';
-import notesRouter from './routes/notes.js';
+import { callGeminiDirect } from './services/whisperService.js';
+import notesRouter, { generateNotesSummary } from './routes/notes.js';
+import journalRouter from './routes/journal.js';
 import { WATCHLIST } from './data/watchlist.js';
-import { getQuotes, getMarketStatus as schwabMarketStatus } from './services/schwab.js';
+import { getQuotes, getMarketStatus as schwabMarketStatus, getOptionsChain } from './services/schwab.js';
 import { fetchEarningsHistory } from './scrapers/earningsHistory.js';
 
 const app = express();
@@ -89,6 +90,7 @@ app.use((req, res, next) => {
 
 app.use('/api/uploads', express.static(path.join(__dirname, 'data', 'notes', 'uploads')));
 app.use('/api', notesRouter);
+app.use('/api', journalRouter);
 
 // ── Input validation helpers ──────────────────────────────────────────────────
 function validateTicker(ticker) {
@@ -97,7 +99,10 @@ function validateTicker(ticker) {
   return null;
 }
 
-const VALID_ALERT_CONDITIONS = ['above', 'below', 'crosses_above', 'crosses_below'];
+const VALID_ALERT_CONDITIONS = ['near_sma', 'cross_above_sma', 'cross_below_sma', 'price_above', 'price_below'];
+const CONDITIONS_REQUIRING_THRESHOLD = ['near_sma', 'price_above', 'price_below'];
+const CONDITIONS_REQUIRING_PERIOD    = ['near_sma', 'cross_above_sma', 'cross_below_sma'];
+const VALID_SMA_PERIODS = [8, 20, 21, 50, 100, 200];
 
 // Resolve absolute paths for data files so they work regardless of cwd
 const alertsPath    = path.join(__dirname, 'data', 'alerts.json');
@@ -116,6 +121,49 @@ function readAlertState() {
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+
+// ── Credentials status ────────────────────────────────────────────────────────
+app.get('/api/credentials/status', (req, res) => {
+  const accessExpiresAt  = parseInt(process.env.SCHWAB_TOKEN_EXPIRES_AT || '0');
+  const refreshIssuedAt  = parseInt(process.env.SCHWAB_REFRESH_TOKEN_ISSUED_AT || '0');
+  // Schwab refresh tokens expire after 7 days
+  const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  const refreshExpiresAt = refreshIssuedAt ? refreshIssuedAt + REFRESH_TOKEN_TTL_MS : 0;
+  const now = Date.now();
+
+  const accessMsLeft   = accessExpiresAt - now;
+  const refreshMsLeft  = refreshExpiresAt ? refreshExpiresAt - now : null;
+
+  const getLevel = (msLeft) => {
+    if (msLeft === null) return 'unknown';
+    if (msLeft <= 0) return 'expired';
+    if (msLeft < 24 * 60 * 60 * 1000) return 'warning';  // < 1 day
+    if (msLeft < 2 * 24 * 60 * 60 * 1000) return 'caution'; // < 2 days
+    return 'ok';
+  };
+
+  res.json({
+    schwab: {
+      accessToken: {
+        set: !!process.env.SCHWAB_ACCESS_TOKEN,
+        expiresAt: accessExpiresAt || null,
+        msLeft: accessExpiresAt ? accessMsLeft : null,
+        level: accessExpiresAt ? getLevel(accessMsLeft) : 'unknown',
+      },
+      refreshToken: {
+        set: !!process.env.SCHWAB_REFRESH_TOKEN,
+        issuedAt: refreshIssuedAt || null,
+        expiresAt: refreshExpiresAt || null,
+        msLeft: refreshMsLeft,
+        level: getLevel(refreshMsLeft),
+      },
+    },
+    gemini: {
+      set: !!process.env.GEMINI_API_KEY,
+      level: process.env.GEMINI_API_KEY ? 'ok' : 'missing',
+    },
+  });
 });
 
 // ── Watchlist — single source of truth served from server/data/watchlist.js ──
@@ -307,15 +355,26 @@ app.get('/api/substack-feed', async (req, res) => {
   }
 });
 
+// Flatten all watchlist tickers into a Set for O(1) lookup
+const WATCHLIST_TICKERS = new Set(WATCHLIST.flatMap(g => g.tickers));
+
+function filterEarningsByWatchlist(data) {
+  if (!data) return data;
+  const filter = (days) => days
+    .map(day => ({ ...day, earnings: day.earnings.filter(e => WATCHLIST_TICKERS.has(e.ticker)) }))
+    .filter(day => day.earnings.length > 0);
+  return { ...data, thisWeek: filter(data.thisWeek || []), nextWeek: filter(data.nextWeek || []) };
+}
+
 app.get('/api/earnings-calendar', async (req, res) => {
   const disk = loadDiskCache('earnings-calendar');
-  if (disk) res.json(disk);
+  if (disk) res.json(filterEarningsByWatchlist(disk));
   try {
     const data = await fetchEarningsCalendar();
     if (data) {
       const hasEarnings = (data.thisWeek?.length || 0) + (data.nextWeek?.length || 0) > 0;
       if (hasEarnings) saveDiskCache('earnings-calendar', data);
-      if (!disk) res.json(data);
+      if (!disk) res.json(filterEarningsByWatchlist(data));
     } else if (!disk) {
       res.status(500).json({ error: 'Earnings calendar unavailable' });
     }
@@ -361,20 +420,29 @@ app.get('/api/alerts', (req, res) => {
 
 app.post('/api/alerts', (req, res) => {
   try {
-    const { ticker, condition, price } = req.body;
+    const { ticker, condition, period, threshold, cooldownHours } = req.body;
     const tickerErr = validateTicker(ticker);
     if (tickerErr) return res.status(400).json({ error: tickerErr });
     if (!VALID_ALERT_CONDITIONS.includes(condition))
       return res.status(400).json({ error: `condition must be one of: ${VALID_ALERT_CONDITIONS.join(', ')}` });
-    const numPrice = parseFloat(price);
-    if (!isFinite(numPrice) || numPrice <= 0)
-      return res.status(400).json({ error: 'price must be a positive number' });
+
+    if (CONDITIONS_REQUIRING_PERIOD.includes(condition)) {
+      if (!VALID_SMA_PERIODS.includes(parseInt(period)))
+        return res.status(400).json({ error: `period must be one of: ${VALID_SMA_PERIODS.join(', ')}` });
+    }
+    if (CONDITIONS_REQUIRING_THRESHOLD.includes(condition)) {
+      const numThreshold = parseFloat(threshold);
+      if (!isFinite(numThreshold) || numThreshold <= 0)
+        return res.status(400).json({ error: 'threshold must be a positive number for this condition' });
+    }
 
     const alerts = readAlerts();
     const newAlert = {
       ticker: ticker.toUpperCase(),
       condition,
-      price: numPrice,
+      ...(CONDITIONS_REQUIRING_PERIOD.includes(condition)    && { period: parseInt(period) }),
+      ...(CONDITIONS_REQUIRING_THRESHOLD.includes(condition) && { threshold: parseFloat(threshold) }),
+      cooldownHours: Math.max(1, Math.min(48, parseInt(cooldownHours) || 4)),
       id: `${ticker.toLowerCase()}-${condition}-${Date.now()}`,
       enabled: true,
     };
@@ -420,7 +488,7 @@ Question: ${question}
 
 Answer in 2-4 sentences max. Be direct, specific, and actionable. No fluff. If you don't have enough data, say so briefly.`;
 
-    const answer = await callGemini(prompt);
+    const answer = await callGeminiDirect(prompt);
     if (!answer) return res.status(503).json({ error: 'AI unavailable' });
     res.json({ success: true, answer: answer.trim() });
   } catch (e) {
@@ -440,7 +508,7 @@ Return ONLY a JSON array: [{"index":0,"sentiment":"Bullish","score":8}, ...]
 Headlines:
 ${headlines.map((h, i) => `${i}. ${h}`).join('\n')}`;
 
-    const raw = await callGemini(prompt);
+    const raw = await callGeminiDirect(prompt);
     if (!raw) return res.json({ scores: [] });
     const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     const scores = JSON.parse(cleaned);
@@ -510,6 +578,162 @@ app.get('/api/watchlist-scan', async (req, res) => {
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Trading Rules (read/write rules.json) ────────────────────────────────────
+const RULES_FILE = path.join(__dirname, 'data', 'rules.json');
+
+app.get('/api/rules', (req, res) => {
+  try {
+    const rules = fs.existsSync(RULES_FILE) ? JSON.parse(fs.readFileSync(RULES_FILE, 'utf-8')) : [];
+    res.json({ success: true, rules });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/rules', (req, res) => {
+  try {
+    const { rules } = req.body;
+    if (!Array.isArray(rules)) return res.status(400).json({ error: 'rules must be an array' });
+    const clean = rules.map(r => String(r).trim()).filter(Boolean);
+    fs.writeFileSync(RULES_FILE, JSON.stringify(clean, null, 2));
+    res.json({ success: true, rules: clean });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Gemini AI: Market Narrative ───────────────────────────────────────────────
+let narrativeCache = { data: null, generatedAt: 0 };
+const NARRATIVE_TTL = 20 * 60 * 1000; // 20 min
+
+async function generateMarketNarrative() {
+  const sentiment = loadDiskCache('market-sentiment');
+  const themes = loadDiskCache('theme-performance');
+  const gaps = loadDiskCache('gap-scanner');
+  const premarket = loadDiskCache('pre-market-report');
+
+  const parts = [];
+  if (sentiment?.rating) parts.push(`Market Sentiment: ${sentiment.rating} (score: ${sentiment.score ?? 'N/A'})`);
+  if (themes?.themes?.length) {
+    const top = themes.themes.slice(0, 8).map(t => `${t.name}: ${t.change ?? t.performance ?? 'N/A'}`).join(', ');
+    parts.push(`Theme Performance: ${top}`);
+  }
+  if (gaps?.gapUps?.length || gaps?.gapDowns?.length) {
+    const ups = (gaps.gapUps || []).slice(0, 5).map(g => `${g.ticker}+${g.gapPct}%`).join(', ');
+    const downs = (gaps.gapDowns || []).slice(0, 5).map(g => `${g.ticker}${g.gapPct}%`).join(', ');
+    if (ups) parts.push(`Gap Ups: ${ups}`);
+    if (downs) parts.push(`Gap Downs: ${downs}`);
+  }
+  if (premarket?.summary || premarket?.headline) {
+    parts.push(`Pre-Market: ${premarket.summary || premarket.headline}`);
+  }
+
+  if (parts.length === 0) return; // no data yet, skip
+
+  const prompt = `You are a sharp pre-market analyst. Write a concise 2-3 paragraph morning market narrative for a momentum trader.
+Focus on: overall market tone, sectors with momentum, key movers to watch, and any macro risks.
+Be direct and actionable — skip filler phrases. Write in present tense.
+
+Market data:
+${parts.join('\n')}
+
+Write the narrative now:`;
+
+  const text = await callGeminiDirect(prompt);
+  if (text) narrativeCache = { data: text.trim(), generatedAt: Date.now() };
+}
+
+app.get('/api/market-narrative', heavyLimiter, async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    if (!force && narrativeCache.data && (Date.now() - narrativeCache.generatedAt) < NARRATIVE_TTL) {
+      return res.json({ success: true, narrative: narrativeCache.data, cached: true });
+    }
+
+    await generateMarketNarrative();
+    if (!narrativeCache.data) return res.json({ success: true, narrative: null, message: 'No market data available yet' });
+    res.json({ success: true, narrative: narrativeCache.data });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Gemini AI: Setup Scorer ───────────────────────────────────────────────────
+let setupScoreCache = { data: null, generatedAt: 0 };
+const SETUP_SCORE_TTL = 20 * 60 * 1000;
+
+app.get('/api/setup-score', heavyLimiter, async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    if (!force && setupScoreCache.data && (Date.now() - setupScoreCache.generatedAt) < SETUP_SCORE_TTL) {
+      return res.json({ success: true, setups: setupScoreCache.data, cached: true });
+    }
+
+    const scan = scanCache.data;
+    if (!scan?.results?.length) return res.json({ success: true, setups: null, message: 'No scan data available' });
+
+    const top = scan.results.slice(0, 20).map(r =>
+      `${r.ticker}: price=${r.price}, rsi=${r.rsi ?? 'N/A'}, vol=${r.volumeRatio ?? 'N/A'}x, trend=${r.trend ?? 'N/A'}, setup=${r.setup ?? 'N/A'}`
+    ).join('\n');
+
+    const prompt = `You are a momentum trader reviewing a watchlist scan. Score each setup A, B, or C and explain in one line why.
+Return ONLY a JSON array: [{"ticker":"NVDA","grade":"A","reason":"..."}]
+
+Setups:
+${top}`;
+
+    const raw = await callGeminiDirect(prompt);
+    if (!raw) return res.json({ success: true, setups: null });
+    const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const setups = JSON.parse(cleaned);
+    setupScoreCache = { data: setups, generatedAt: Date.now() };
+    res.json({ success: true, setups });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Gemini AI: Trade Ideas ────────────────────────────────────────────────────
+let tradeIdeasCache = { data: null, generatedAt: 0 };
+const TRADE_IDEAS_TTL = 20 * 60 * 1000;
+
+app.get('/api/trade-ideas', heavyLimiter, async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    if (!force && tradeIdeasCache.data && (Date.now() - tradeIdeasCache.generatedAt) < TRADE_IDEAS_TTL) {
+      return res.json({ success: true, ideas: tradeIdeasCache.data, cached: true });
+    }
+
+    const scan = scanCache.data;
+    const gaps = loadDiskCache('gap-scanner');
+
+    const parts = [];
+    if (scan?.results?.length) {
+      const top = scan.results.slice(0, 15).map(r => `${r.ticker}: ${r.setup ?? 'N/A'}, rsi=${r.rsi ?? 'N/A'}, trend=${r.trend ?? 'N/A'}`).join('\n');
+      parts.push('Watchlist Scan:\n' + top);
+    }
+    if (gaps?.gapUps?.length) {
+      const gapStr = gaps.gapUps.slice(0, 8).map(g => `${g.ticker} +${g.gapPct}%`).join(', ');
+      parts.push('Gap Ups: ' + gapStr);
+    }
+
+    if (!parts.length) return res.json({ success: true, ideas: null, message: 'No data available' });
+
+    const prompt = `You are a momentum trader. Based on today's scan data, generate 3-5 specific trade ideas.
+For each idea include: ticker, direction (long/short), entry trigger, target, stop, and one-sentence thesis.
+Return ONLY a JSON array:
+[{"ticker":"NVDA","direction":"long","entry":"break above 950","target":"975","stop":"935","thesis":"..."}]
+
+Data:
+${parts.join('\n\n')}`;
+
+    const raw = await callGeminiDirect(prompt);
+    if (!raw) return res.json({ success: true, ideas: null });
+    const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const ideas = JSON.parse(cleaned);
+    tradeIdeasCache = { data: ideas, generatedAt: Date.now() };
+    res.json({ success: true, ideas });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -612,6 +836,12 @@ function startBackgroundRefresh() {
 
   setTimeout(() => refreshData('Theme Performance', () => fetchThemePerformance('today')), 8_000);
 
+  // Market Narrative — generate after underlying data is ready (~15s)
+  setTimeout(() => refreshData('Market Narrative', generateMarketNarrative), 15_000);
+
+  // Notes Summary — generate on startup
+  setTimeout(() => refreshData('Notes Summary', generateNotesSummary), 10_000);
+
   // ── Recurring intervals ───────────────────────────────────────────────────
   setInterval(() => withBrowserLock('Market Briefing', scrapeMarketBriefing), 14 * 60_000);
   setInterval(() => withBrowserLock('Pre-Market Report', generatePreMarketReport), 9 * 60_000);
@@ -646,6 +876,10 @@ function startBackgroundRefresh() {
   }), 14 * 60_000);
 
   setInterval(() => refreshData('Theme Performance', () => fetchThemePerformance('today')), 28 * 60_000);
+
+  setInterval(() => refreshData('Market Narrative', generateMarketNarrative), 20 * 60_000);
+
+  setInterval(() => refreshData('Notes Summary', generateNotesSummary), 15 * 60_000);
 
   // Price alerts — check every 5 minutes
   setInterval(() => runAlertCheck(), 5 * 60_000);
@@ -743,6 +977,26 @@ app.get('/api/ticker-info', async (req, res) => {
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Options chain summary — cached per ticker for 5 minutes
+const optionsCache = new Map(); // ticker → { data, ts }
+const OPTIONS_TTL = 5 * 60 * 1000;
+
+app.get('/api/options-data', async (req, res) => {
+  const { ticker } = req.query;
+  const tickerErr = validateTicker(ticker);
+  if (tickerErr) return res.status(400).json({ error: tickerErr });
+  const upper = ticker.toUpperCase();
+  const cached = optionsCache.get(upper);
+  if (cached && Date.now() - cached.ts < OPTIONS_TTL) return res.json(cached.data);
+  try {
+    const data = await getOptionsChain(upper);
+    optionsCache.set(upper, { data, ts: Date.now() });
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 

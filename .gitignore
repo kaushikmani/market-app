@@ -17,7 +17,15 @@ dist-ssr/
 server/data/page-cache/
 server/data/notes/
 server/data/alerts.json
+server/data/alert-state.json
+server/data/scan-alert-state.json
+server/data/journal-positions.json
+server/data/journal-trades.json
+server/data/rules.json
 server/data/uploads/
+
+# ── Vite cache ─────────────────────────────────────────────────────────────────
+.vite/
 
 # ── Browser automation profile ─────────────────────────────────────────────────
 .stock-analyzer/

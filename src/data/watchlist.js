@@ -1,7 +1,7 @@
 export const WATCHLIST = [
   {
     name: 'ETFs & Indices',
-    tickers: ['SPY', 'QQQ', 'IWM', 'DIA', 'GLD', 'SLV', 'XLK', 'XLC', 'XLV', 'IGV', 'ARKG', 'NAIL', 'EWY', 'EWZ', 'ILF'],
+    tickers: ['SPY', 'QQQ', 'IWM', 'DIA', 'GLD', 'SLV', 'XLK', 'XLC', 'XLV', 'XLE', 'IGV', 'ARKG', 'NAIL', 'EWY', 'EWZ', 'ILF'],
   },
   {
     name: 'Mega Cap Tech',
@@ -105,7 +105,7 @@ export const WATCHLIST = [
   },
   {
     name: 'Restaurants',
-    tickers: ['CBRL', 'CMG', 'COCO', 'DNUT', 'EAT', 'JACK', 'PFGC', 'SG', 'SHAK', 'WING'],
+    tickers: ['CBRL', 'CMG', 'COCO', 'DNUT', 'EAT', 'JACK', 'MCD', 'PFGC', 'SG', 'SHAK', 'WING'],
   },
   {
     name: 'Travel & Leisure',
@@ -113,7 +113,7 @@ export const WATCHLIST = [
   },
   {
     name: 'Oil & Gas',
-    tickers: ['OIL', 'XOM', 'BP', 'SHEL', 'CVX', 'AR', 'DVN', 'OXY', 'GAS'],
+    tickers: ['OIL', 'XOM', 'BP', 'SHEL', 'CVX', 'AR', 'DVN', 'OXY', 'SLB', 'GAS'],
   },
   {
     name: 'Materials & Industrial',

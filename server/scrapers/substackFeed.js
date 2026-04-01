@@ -174,8 +174,8 @@ export async function fetchSubstackFeed() {
     return new Date(b.date) - new Date(a.date);
   });
 
-  // Step 2: Scrape full content + summarize (latest 5 articles)
-  const postsToProcess = allPosts.slice(0, 5);
+  // Step 2: Scrape full content + summarize (latest 3 articles — keep Gemini quota for game plan)
+  const postsToProcess = allPosts.slice(0, 3);
   for (const post of postsToProcess) {
     console.log(`[SubstackFeed] Scraping: "${post.title}"...`);
     const content = await scrapeArticleContent(post.link);

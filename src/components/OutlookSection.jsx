@@ -1,6 +1,144 @@
 import React, { useState } from 'react';
 import { Theme } from '../models/Theme';
 
+const COACHING_SESSIONS = [
+  {
+    id: 'session-1',
+    session: 1,
+    date: 'Jan 28, 2026',
+    title: 'Session 1 — Introduction to IC Insiders Coaching',
+    videoUrl: 'https://www.youtube.com/watch?v=bbSpB_IIbVo',
+    videoType: 'youtube',
+    duration: '1 hr 11 min',
+    summary: 'First session of the IC Insiders Group Coaching program with David Prince. Introductory format covering the coaching program structure and David\'s overall trading philosophy.',
+    keyTakeaways: [
+      'Inaugural session establishing the IC Insiders Group Coaching format with David Prince (T3 Live)',
+      'Group coaching / Q&A style — members bring questions and setups to each session',
+      'Full replay available on YouTube',
+    ],
+  },
+  {
+    id: 'session-2',
+    session: 2,
+    date: 'Feb 11, 2026',
+    title: 'Session 2 — How I Use Charts and Technical Analysis',
+    videoUrl: 'https://www.youtube.com/watch?v=W7O5fNFKVHY',
+    videoType: 'youtube',
+    duration: '59 min 58 sec',
+    summary: 'David Prince teaches how he uses charts and TA in trading — three-timeframe framework, moving averages, volume analysis, and his setup checklist before every entry.',
+    keyTakeaways: [
+      'Three timeframes: weekly for dominant trend, daily for setup identification, intraday (60-min/5-min) for entry precision',
+      'Moving averages: 20-day (momentum pullbacks), 50-day (medium-term benchmark), 200-day (bull/bear dividing line)',
+      'Volume confirms price — breakouts need high volume; pullbacks should show volume dry-up (VDU)',
+      'Setup checklist: market trend aligned, stock trend aligned, clear entry trigger, defined stop, 2:1 R/R minimum, volume confirmed',
+      'Common mistake: chasing breakouts without volume, ignoring the weekly trend, or fighting the higher timeframe',
+    ],
+  },
+  {
+    id: 'session-3',
+    session: 3,
+    date: 'Feb 13, 2026',
+    title: 'Session 3 — Growing a Smaller Account + A+ Setups',
+    videoUrl: 'https://us06web.zoom.us/rec/share/ug8Tinb286rSBIo_oMnx7v6_YDiFLOYRJhKGM90kocouPeb3LHKDzc1XktfBAh0.rXLqstV89T-vCmds',
+    videoType: 'zoom',
+    zoomPassword: 'X5Y##s@b',
+    duration: null,
+    summary: 'How to grow a smaller trading account by being ruthlessly selective — focusing only on A+ setups and avoiding the over-trading trap that erodes capital.',
+    keyTakeaways: [
+      'A+ setup criteria: macro aligned, leading sector, strong relative strength stock, clean chart base, volume confirmation, clear stop, 2:1+ R/R',
+      'Risk no more than 1-2% of account per trade — non-negotiable for small accounts',
+      'Run 3-5 positions max; concentrate in fewer, better setups rather than spreading thin',
+      'If no A+ setup exists, the correct action is NO TRADE — cash is a valid position',
+      'Track win rate by grade (A/B/C) after each trade — A+ win rate should significantly exceed B/C to validate criteria',
+    ],
+  },
+  {
+    id: 'session-4',
+    session: 4,
+    date: 'Feb 18, 2026',
+    title: 'Session 4 — Approach to Earnings Season',
+    videoUrl: 'https://www.youtube.com/watch?v=coM5ToWhcRQ',
+    videoType: 'youtube',
+    duration: '1 hr 1 min 56 sec',
+    summary: 'David\'s systematic approach to earnings events — pre-earnings positioning, managing gap risk, implied volatility dynamics, and the post-earnings reaction playbook.',
+    keyTakeaways: [
+      'Chart structure before earnings predicts the reaction better than the actual numbers',
+      'Three strategies: hold through (reduce to 50-75% size), sell before (protect gains, no coin flip), or trade the post-earnings reaction',
+      'Know the expected move from options pricing — if buying options, the stock must move MORE than the expected move to profit (IV crush)',
+      'Size a position before earnings as if you could lose the entire amount overnight — gap risk bypasses stops',
+      'Post-earnings playbook: gap up + hold HOD = continuation; gap up + fade = failed breakout; gap down + VWAP recovery = potential long; gap down continues = avoid',
+    ],
+  },
+  {
+    id: 'session-5',
+    session: 5,
+    date: 'Mar 4, 2026',
+    title: 'Session 5 — Trading Around a Core Position + Market Trends',
+    videoUrl: 'https://www.youtube.com/watch?v=MlssFhlbdw8',
+    videoType: 'youtube',
+    duration: '1 hr 3 min',
+    summary: 'Two topics: trading around a core long-term position for additional cash flow (scaling, covered calls, separate scalps), and a top-down process for finding focus ideas each week.',
+    keyTakeaways: [
+      'Core position = long-term conviction hold; trading around it (trims, adds, covered calls) adds 10-30% additional return on the same underlying',
+      'Scale in/out: trim 25-33% at resistance, add back at support — never cut the full core below 50% of target size',
+      'Covered calls: sell OTM weekly/monthly calls at next resistance level to collect premium; avoid during expected big moves or catalysts',
+      'Top-down process: SPY/QQQ weekly vs 20-week MA (bull/bear) → top 2-3 sectors by RS → leaders within sector → setup quality check',
+      'David\'s Sunday routine: review macro, identify top sectors, screen RS leaders, build Tier 1 watchlist (3-5 names), set alerts for Monday',
+    ],
+  },
+  {
+    id: 'session-6',
+    session: 6,
+    date: 'Mar 11, 2026',
+    title: 'Session 6 — Screen Setup + Focus Watchlists',
+    videoUrl: 'https://www.youtube.com/watch?v=ol2MV_RkkR8',
+    videoType: 'youtube',
+    duration: '1 hr 24 min',
+    summary: 'Optimal multi-monitor screen layout for trading, building a focused sector-based watchlist of 15-25 names, and a bonus scalping lesson on trading familiar names.',
+    keyTakeaways: [
+      'Monitor layout: M1 = active charts (5-min + 1-min); M2 = market overview (SPY/QQQ/IWM + TICK/TRIN/ADD); M3 = watchlist with Level 2/T&S',
+      'Chart layout per stock: daily (big picture trend/levels) + 5-min/1-min (intraday entry timing) — both timeframes always visible',
+      'Focus watchlist: 15-25 names max — Tier 1 (trade today: 3-5), Tier 2 (watching for setup: 8-10), Tier 3 (research: 5-10)',
+      'Sector watchlist: Tech (NVDA, AMD, MSFT, META), Energy (XOM, CVX), Financials (JPM, GS), Healthcare (UNH, LLY), always SPY/QQQ/IWM',
+      'Scalping tip: scalp names you know well — familiarity with a stock\'s VWAP behavior removes hesitation and leads to cleaner exits',
+    ],
+  },
+  {
+    id: 'session-7',
+    session: 7,
+    date: 'Mar 20, 2026',
+    title: 'Session 7 — Principles of Running Money for More Alpha',
+    videoUrl: 'https://www.youtube.com/watch?v=Datfy9xMoo8',
+    videoType: 'youtube',
+    duration: '1 hr 3 min',
+    summary: 'How to generate returns above the S&P 500 benchmark — concentration over diversification, sizing by conviction, letting winners run, cutting losers fast, and sector rotation.',
+    keyTakeaways: [
+      'Alpha = performance above SPY; owning 30-40 stocks makes you a closet index fund — run 5-10 high-conviction positions',
+      'Size by conviction tier: Tier 1 (15-25% of portfolio), Tier 2 (8-12%), Tier 3 speculative (3-5%)',
+      '60-70% of a stock\'s move is driven by sector and market trend — being in the right sector matters more than individual stock picking',
+      'Letting winners run (trailing stops, think in multiples of R) adds more alpha than finding more winners',
+      'Cutting losers fast preserves alpha — down 50% requires up 100% to recover; no position down more than 2x initial risk',
+    ],
+  },
+  {
+    id: 'session-8',
+    session: 8,
+    date: 'Mar 25, 2026',
+    title: 'Session 8 — Swing Trading vs Scalping',
+    videoUrl: 'https://www.youtube.com/watch?v=woC3BF_lFDM',
+    videoType: 'youtube',
+    duration: '1 hr 5 min',
+    summary: 'Fundamental differences between swing trading and scalping — timeframes, chart usage, position sizing, psychological demands, and the common mistake of confusing the two.',
+    keyTakeaways: [
+      'Swing trading: 2 days to weeks, daily/weekly charts, wider stops, smaller size, targets multi-day trends with patience',
+      'Scalping: seconds to minutes, 1-min/5-min charts, tight stops, larger size, requires full screen attention and fast decisions',
+      'Key mistake: turning a scalp into a swing trade (holding a loser) or a swing into a scalp (exiting early on intraday noise)',
+      'Define the trade type BEFORE entry — match your chart timeframe to your intended hold period',
+      'Many pros combine both: swing trade a core account for larger gains, scalp for daily cash flow — but master one style first',
+    ],
+  },
+];
+
 const THEMES = [
   {
     id: 'macro',
@@ -175,6 +313,128 @@ function TickerPill({ ticker, onClick }) {
     >
       ${ticker}
     </span>
+  );
+}
+
+function CoachingSessionCard({ session }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className="card"
+      style={{ padding: '14px 16px', cursor: 'pointer' }}
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+        <span style={{
+          fontSize: '9px',
+          fontWeight: 700,
+          padding: '2px 7px',
+          borderRadius: Theme.radius.full,
+          color: Theme.colors.accentBlue,
+          background: Theme.colors.accentBlueDim,
+          border: `1px solid ${Theme.colors.accentBlueBorder}`,
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          flexShrink: 0,
+        }}>
+          S{session.session}
+        </span>
+        <span style={{
+          fontSize: '13px',
+          fontWeight: 700,
+          color: Theme.colors.primaryText,
+          flex: 1,
+        }}>
+          {session.title.replace(/^Session \d+ — /, '')}
+        </span>
+        <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText, fontWeight: 600 }}>
+          {expanded ? '−' : '+'}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+        <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>{session.date}</span>
+        {session.duration && (
+          <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>· {session.duration}</span>
+        )}
+        <span style={{
+          fontSize: '9px',
+          fontWeight: 600,
+          padding: '1px 6px',
+          borderRadius: Theme.radius.xs,
+          color: session.videoType === 'zoom' ? '#a78bfa' : '#f87171',
+          background: session.videoType === 'zoom' ? 'rgba(167,139,250,0.08)' : 'rgba(248,113,113,0.08)',
+          border: `1px solid ${session.videoType === 'zoom' ? 'rgba(167,139,250,0.2)' : 'rgba(248,113,113,0.2)'}`,
+        }}>
+          {session.videoType === 'zoom' ? 'Zoom' : 'YouTube'}
+        </span>
+      </div>
+
+      <div style={{
+        fontSize: '11px',
+        color: Theme.colors.secondaryText,
+        lineHeight: 1.6,
+      }}>
+        {session.summary}
+      </div>
+
+      {expanded && (
+        <div style={{
+          marginTop: '12px',
+          paddingTop: '12px',
+          borderTop: `1px solid ${Theme.colors.borderSubtle}`,
+        }}>
+          <div style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            color: Theme.colors.tertiaryText,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            marginBottom: '8px',
+          }}>
+            Key Takeaways
+          </div>
+          {session.keyTakeaways.map((point, i) => (
+            <div key={i} style={{
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '6px',
+              fontSize: '11px',
+              color: Theme.colors.secondaryText,
+              lineHeight: 1.5,
+            }}>
+              <span style={{ color: Theme.colors.tertiaryText, flexShrink: 0 }}>•</span>
+              <span>{point}</span>
+            </div>
+          ))}
+          <div style={{ marginTop: '10px' }}>
+            <a
+              href={session.videoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                color: Theme.colors.accentBlue,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              ▶ Watch Replay
+              {session.videoType === 'zoom' && session.zoomPassword && (
+                <span style={{ color: Theme.colors.tertiaryText, fontWeight: 400 }}>
+                  (Password: {session.zoomPassword})
+                </span>
+              )}
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -353,6 +613,30 @@ export function OutlookSection({ onTickerClick }) {
       {/* Theme cards */}
       {THEMES.map(theme => (
         <ThemeCard key={theme.id} theme={theme} onTickerClick={onTickerClick} />
+      ))}
+
+      {/* IC Insiders Coaching Replays */}
+      <div style={{ marginTop: '8px', marginBottom: '4px' }}>
+        <div style={{
+          fontSize: '15px',
+          fontWeight: 800,
+          color: Theme.colors.primaryText,
+          letterSpacing: '-0.01em',
+          marginBottom: '2px',
+        }}>
+          IC Insiders Group Coaching
+        </div>
+        <div style={{
+          fontSize: '11px',
+          color: Theme.colors.tertiaryText,
+          fontWeight: 500,
+        }}>
+          David Prince · 8 sessions · Jan–Mar 2026
+        </div>
+      </div>
+
+      {COACHING_SESSIONS.map(session => (
+        <CoachingSessionCard key={session.id} session={session} />
       ))}
 
       {/* Footer */}

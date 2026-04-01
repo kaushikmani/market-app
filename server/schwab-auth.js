@@ -39,16 +39,18 @@ function exchangeCode(code) {
       path:     '/v1/oauth/token',
       method:   'POST',
       headers: {
-        'Authorization': `Basic ${credentials}`,
-        'Content-Type':  'application/x-www-form-urlencoded',
-        'Content-Length': Buffer.byteLength(body),
+        'Authorization':   `Basic ${credentials}`,
+        'Content-Type':    'application/x-www-form-urlencoded',
+        'Content-Length':  Buffer.byteLength(body),
+        'Accept-Encoding': 'identity',
       },
     };
 
     const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
+        const data = Buffer.concat(chunks).toString('utf-8');
         try { resolve(JSON.parse(data)); }
         catch { reject(new Error(`Bad response: ${data}`)); }
       });
@@ -112,6 +114,7 @@ async function main() {
   replace('SCHWAB_ACCESS_TOKEN',  tokens.access_token);
   replace('SCHWAB_REFRESH_TOKEN', tokens.refresh_token);
   replace('SCHWAB_TOKEN_EXPIRES_AT', String(expiresAt));
+  replace('SCHWAB_REFRESH_TOKEN_ISSUED_AT', String(Date.now()));
 
   fs.writeFileSync(envPath, envContent);
 

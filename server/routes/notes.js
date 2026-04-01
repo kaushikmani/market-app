@@ -3,7 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
-import { transcribeAudio, extractTickers, summarizeTranscript, generateBrief, callGemini } from '../services/whisperService.js';
+import rateLimit from 'express-rate-limit';
+import { transcribeAudio, extractTickers, summarizeTranscript, generateBrief, callGemini, callGeminiDirect } from '../services/whisperService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NOTES_DIR = path.join(__dirname, '..', 'data', 'notes');
@@ -13,18 +14,41 @@ const UPLOADS_DIR = path.join(NOTES_DIR, 'uploads');
 if (!fs.existsSync(NOTES_DIR)) fs.mkdirSync(NOTES_DIR, { recursive: true });
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+const ALLOWED_MIMETYPES = [
+  'audio/webm', 'audio/mp4', 'audio/mpeg', 'audio/m4a', 'audio/ogg', 'audio/wav', 'audio/x-m4a',
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+];
+
 const upload = multer({
   dest: UPLOADS_DIR,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIMETYPES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`File type '${file.mimetype}' is not allowed`));
+    }
+  },
 });
 const router = express.Router();
+
+const heavyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests for this endpoint.' },
+});
 
 function generateId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function getNoteFilePath(id) {
-  return path.join(NOTES_DIR, `${id}.json`);
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(String(id))) throw new Error('Invalid note id');
+  const resolved = path.resolve(NOTES_DIR, `${id}.json`);
+  if (!resolved.startsWith(path.resolve(NOTES_DIR) + path.sep)) throw new Error('Invalid note id');
+  return resolved;
 }
 
 function readNote(id) {
@@ -89,7 +113,7 @@ Rules:
 - watchlist should only contain uppercase ticker symbols mentioned in the notes
 - If a field has nothing relevant, return an empty array`;
 
-router.get('/notes/gameplan', async (req, res) => {
+router.get('/notes/gameplan', heavyLimiter, async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const notes = getAllNotes().filter(n => (n.date || n.createdAt?.slice(0, 10)) === today);
@@ -105,7 +129,7 @@ router.get('/notes/gameplan', async (req, res) => {
       return `[${n.title || 'Note'}]\n${body}`;
     }).join('\n\n---\n\n');
 
-    const text = await callGemini(GAMEPLAN_PROMPT + '\n\nNotes:\n' + input);
+    const text = await callGeminiDirect(GAMEPLAN_PROMPT + '\n\nNotes:\n' + input);
     if (!text) return res.json({ success: true, hasNotes: true, plan: null, error: 'Generation failed' });
 
     // Strip markdown fences if present
@@ -121,7 +145,7 @@ router.get('/notes/gameplan', async (req, res) => {
 let briefCache = { data: null, generatedAt: 0 };
 const BRIEF_TTL = 30 * 60 * 1000; // 30 min cache
 
-router.get('/notes/brief', async (req, res) => {
+router.get('/notes/brief', heavyLimiter, async (req, res) => {
   try {
     // Return cache if fresh
     if (briefCache.data && (Date.now() - briefCache.generatedAt) < BRIEF_TTL) {
@@ -182,6 +206,7 @@ router.post('/notes', async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
+    invalidateSummaryCache();
     res.json({ success: true, note });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -189,7 +214,7 @@ router.post('/notes', async (req, res) => {
 });
 
 // POST /api/notes/ask — ask a question about your notes using Gemini
-router.post('/notes/ask', async (req, res) => {
+router.post('/notes/ask', heavyLimiter, async (req, res) => {
   try {
     const { question, days = 21 } = req.body;
     if (!question?.trim()) return res.status(400).json({ error: 'Question required' });
@@ -218,8 +243,68 @@ QUESTION: ${question}
 
 Answer concisely (2-4 sentences max unless a list is needed):`;
 
-    const answer = await callGemini(prompt);
+    const answer = await callGeminiDirect(prompt);
     res.json({ answer: answer?.trim() || 'No answer generated.', noteCount: notes.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── All-notes Gemini summary ──────────────────────────────────────────────────
+let summaryCache = { data: null, generatedAt: 0 };
+const SUMMARY_CACHE_TTL = 15 * 60 * 1000; // 15 min
+
+export function invalidateSummaryCache() {
+  summaryCache = { data: null, generatedAt: 0 };
+}
+
+const ALL_NOTES_SUMMARY_PROMPT = `You are a trading coach reviewing a trader's personal journal from the last 3 weeks.
+
+Write a comprehensive summary of everything this trader has been thinking about, watching, and working on.
+Organize it into readable paragraphs — not bullet points. Cover:
+1. What stocks/sectors they've been focused on and their thesis for each
+2. Key price levels and setups they've identified
+3. Patterns in their thinking (recurring themes, biases, concerns)
+4. Notable trades or ideas mentioned
+
+Be specific — include ticker symbols, price levels, and exact setups when they appear.
+Write in second person ("You've been watching...", "Your thesis on NVDA is...").
+Keep it concise but complete — aim for 3-5 paragraphs.
+
+Notes:
+`;
+
+export async function generateNotesSummary() {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 3);
+  const notes = getAllNotes()
+    .filter(n => new Date(n.createdAt) >= cutoff)
+    .filter(n => n.content || (n.summary && n.summary.length > 0));
+
+  if (notes.length === 0) return;
+
+  const input = notes.map(n => {
+    const body = n.summary?.length > 0
+      ? n.summary.join('\n')
+      : (n.content || '').slice(0, 2000);
+    const tickers = n.tickers?.length ? ` [${n.tickers.join(', ')}]` : '';
+    return `[${n.date}] ${n.title}${tickers}\n${body}`;
+  }).join('\n\n---\n\n');
+
+  const text = await callGeminiDirect(ALL_NOTES_SUMMARY_PROMPT + input);
+  if (text) summaryCache = { data: text.trim(), generatedAt: Date.now() };
+}
+
+router.get('/notes/summary', heavyLimiter, async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    if (!force && summaryCache.data && (Date.now() - summaryCache.generatedAt) < SUMMARY_CACHE_TTL) {
+      return res.json({ success: true, summary: summaryCache.data, cached: true });
+    }
+
+    await generateNotesSummary();
+    if (!summaryCache.data) return res.json({ success: true, summary: null, message: 'No recent notes' });
+    res.json({ success: true, summary: summaryCache.data });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -277,6 +362,7 @@ router.post('/notes/upload-audio', upload.single('audio'), async (req, res) => {
           createdAt: new Date().toISOString(),
         });
 
+        invalidateSummaryCache();
         transcriptionJobs.set(jobId, { stage: 'done', progress: 100, note });
         // Clean up job after 5 minutes
         setTimeout(() => transcriptionJobs.delete(jobId), 5 * 60 * 1000);
@@ -368,6 +454,7 @@ router.put('/notes/:id', (req, res) => {
     if (tags !== undefined) note.tags = tags;
 
     writeNote(note);
+    invalidateSummaryCache();
     res.json({ success: true, note });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -392,6 +479,7 @@ router.delete('/notes/:id', (req, res) => {
     }
 
     fs.unlinkSync(filePath);
+    invalidateSummaryCache();
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
