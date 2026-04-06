@@ -10,12 +10,6 @@ export const ApiService = {
   getNews: () =>
     fetchJson(`${API_BASE}/news`),
 
-  getFinvizQuote: (ticker) =>
-    fetchJson(`${API_BASE}/finviz-quote?ticker=${encodeURIComponent(ticker)}`),
-
-  getFinvizPeers: (tickers) =>
-    fetchJson(`${API_BASE}/finviz-peers?tickers=${encodeURIComponent(tickers)}`),
-
   getSMAs: (ticker) =>
     fetchJson(`${API_BASE}/sma?ticker=${encodeURIComponent(ticker)}`),
 

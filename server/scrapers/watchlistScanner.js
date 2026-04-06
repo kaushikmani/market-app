@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -13,7 +12,6 @@ const WA_NUMBER      = '120363409048565862@g.us';
 
 const BATCH_SIZE = 10;
 const BATCH_DELAY_MS = 1500;
-const EARNINGS_PROXIMITY_DAYS = 3; // hide setups if earnings within N days
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -483,50 +481,6 @@ function detectRSIOverbought(rsi, price) {
   return null;
 }
 
-// ── Earnings date lookup (Finviz) — only for flagged results ──
-async function fetchEarningsDate(ticker) {
-  try {
-    const raw = execSync(
-      `curl -sL -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' 'https://finviz.com/quote.ashx?t=${encodeURIComponent(ticker)}&p=d'`,
-      { timeout: 10000, encoding: 'utf-8' }
-    );
-    // Extract "Earnings" field value like "Feb 26 BMO" or "Jan 29 AMC"
-    const match = raw.match(/Earnings<\/a><\/td><td[^>]*>.*?<b>(?:<small[^>]*>)?([^<]+)/s);
-    if (!match) return null;
-    const earningsStr = match[1].trim(); // e.g. "Feb 26 BMO" or "Feb 26 AMC"
-    return earningsStr || null;
-  } catch {
-    return null;
-  }
-}
-
-function parseEarningsDate(earningsStr) {
-  if (!earningsStr) return null;
-  // Format: "Feb 26 BMO" or "Feb 26 AMC" or "Feb 26"
-  const parts = earningsStr.match(/([A-Za-z]+)\s+(\d+)/);
-  if (!parts) return null;
-  const monthStr = parts[1];
-  const day = parseInt(parts[2]);
-  const now = new Date();
-  const year = now.getFullYear();
-  const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
-  const month = months[monthStr];
-  if (month === undefined) return null;
-  let date = new Date(year, month, day);
-  // If date is >6 months ago, assume next year
-  if (date < new Date(now.getTime() - 180 * 86400000)) {
-    date = new Date(year + 1, month, day);
-  }
-  return date;
-}
-
-function daysUntilEarnings(earningsStr) {
-  const date = parseEarningsDate(earningsStr);
-  if (!date) return null;
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.round((date - now) / 86400000);
-}
 
 // ── Market hours check (9:30am–4pm ET, Mon-Fri) ──────────────────────────────
 function isMarketHours() {
@@ -778,34 +732,9 @@ export async function scanWatchlist() {
     }
   }
 
-  // Sort by priority, keep top candidates before earnings filter
+  // Sort by priority, keep top 25
   results.sort((a, b) => a.topPriority - b.topPriority || b.setups.length - a.setups.length);
-  const candidates = results.slice(0, 40); // fetch earnings for top 40
-
-  // Batch-fetch earnings dates for flagged results (5 at a time)
-  let earningsFiltered = 0;
-  for (let i = 0; i < candidates.length; i += 5) {
-    const batch = candidates.slice(i, i + 5);
-    const earningsResults = await Promise.allSettled(
-      batch.map(r => fetchEarningsDate(r.ticker))
-    );
-    for (let j = 0; j < batch.length; j++) {
-      const earningsStr = earningsResults[j].status === 'fulfilled' ? earningsResults[j].value : null;
-      batch[j].earningsDate = earningsStr || null;
-      const days = daysUntilEarnings(earningsStr);
-      batch[j].daysUntilEarnings = days;
-      if (days !== null && days >= 0 && days <= EARNINGS_PROXIMITY_DAYS) {
-        batch[j].filteredByEarnings = true;
-        earningsFiltered++;
-      }
-    }
-    if (i + 5 < candidates.length) await sleep(500);
-  }
-
-  // Remove stocks too close to earnings, keep top 25
-  const topResults = candidates
-    .filter(r => !r.filteredByEarnings)
-    .slice(0, 25);
+  const topResults = results.slice(0, 25);
 
   // ── Merge setups from today's audio/text notes ──
   let noteSetupsCount = 0;

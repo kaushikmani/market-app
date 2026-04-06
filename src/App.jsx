@@ -62,65 +62,39 @@ function parseNum(str) {
   return isNaN(num) ? null : num;
 }
 
-function buildStockFromFinviz(data, smaData) {
-  if (!data?.success || !data.fundamentals) return null;
-
-  const f = data.fundamentals;
-  const price = parseNum(f['Price'] || data.price);
-  const prevClose = parseNum(f['Prev Close']);
+function buildStockFromTickerInfo(tickerInfo, smaData) {
+  const price = tickerInfo?.price || smaData?.price;
   if (!price) return null;
 
-  const priceData = new PriceData(
-    prevClose || price,
-    price,
-    prevClose && prevClose < price ? prevClose : price,
-    price
-  );
+  const change = typeof tickerInfo?.change === 'number' ? tickerInfo.change : 0;
+  const prevClose = price - change;
 
-  // Prefer RSI calculated from Yahoo daily prices (Wilder's smoothing) over Finviz
-  const rsiVal = smaData?.rsi != null ? smaData.rsi : parseNum(f['RSI (14)']);
-  const rsi = new RSIIndicator(rsiVal || 50, 14);
+  const priceData = new PriceData(prevClose, price, Math.min(prevClose, price), Math.max(prevClose, price));
 
-  const sma20pct = parseNum(f['SMA20']);
+  const rsiVal = smaData?.rsi != null ? smaData.rsi : 50;
+  const rsi = new RSIIndicator(rsiVal, 14);
+
+  let sma20pct = null;
+  let sma50pct = null;
+  if (smaData?.success && smaData.smas) {
+    if (smaData.smas[20]) sma20pct = smaData.smas[20].pctFromPrice;
+    if (smaData.smas[50]) sma50pct = smaData.smas[50].pctFromPrice;
+  }
   const bbValue = sma20pct !== null ? Math.min(100, Math.max(0, 50 + sma20pct * 12.5)) : 50;
   const bb = new BollingerBandIndicator(bbValue);
-
-  const sma50pct = parseNum(f['SMA50']);
   const macdHist = (sma20pct || 0) - (sma50pct || 0);
   const macd = new MACDIndicator(macdHist, 0, macdHist);
-
   const indicators = new TechnicalIndicators(rsi, bb, macd);
 
-  const volatilityPct = f['Volatility'] || '';
-  const volParts = volatilityPct.split(' ');
-  const weekVol = parseNum(volParts[0]) || 0;
-  const atr = parseNum(f['ATR (14)']) || 0;
-  const pctFrom50 = parseNum(f['SMA50']) || 0;
+  const pctFrom50 = sma50pct || 0;
+  const volatility = new VolatilityMetricsModel(0, 0, pctFrom50);
 
-  const volatility = new VolatilityMetricsModel(weekVol, atr, pctFrom50);
-
-  let movingAverages = [];
-
-  if (smaData?.success && Object.keys(smaData.smas).length > 0) {
-    const periods = [8, 10, 21, 50, 100, 200];
-    for (const p of periods) {
+  const movingAverages = [];
+  if (smaData?.success && smaData.smas) {
+    for (const p of [8, 10, 21, 50, 100, 200]) {
       const sma = smaData.smas[p];
-      if (sma) {
-        movingAverages.push(new MovingAverage(MAType.SMA, p, sma.value, sma.pctFromPrice));
-      }
+      if (sma) movingAverages.push(new MovingAverage(MAType.SMA, p, sma.value, sma.pctFromPrice));
     }
-  } else {
-    const sma200pct = parseNum(f['SMA200']);
-    const makeSMA = (period, pctFromPrice) => {
-      if (pctFromPrice === null) return null;
-      const smaValue = price / (1 + pctFromPrice / 100);
-      return new MovingAverage(MAType.SMA, period, smaValue, pctFromPrice);
-    };
-    movingAverages = [
-      makeSMA(20, sma20pct),
-      makeSMA(50, sma50pct),
-      makeSMA(200, sma200pct),
-    ].filter(Boolean);
   }
 
   return { priceData, indicators, volatility, movingAverages };
@@ -135,9 +109,9 @@ function App() {
   const [inputFocused, setInputFocused] = useState(false);
   const stockZoneRef = useRef(null);
 
-  const { news, stockNews, finvizQuote, finvizPeers, smaData, marketBriefing, watchlistScan, loadingBriefing, loadingScan, loadingMarketNews, loading, loadingPeers, loadingNews, errors } = useMarketData(ticker, activeTab === 'stock');
+  const { news, stockNews, tickerInfo, smaData, marketBriefing, watchlistScan, loadingBriefing, loadingScan, loadingMarketNews, loading, loadingNews, errors } = useMarketData(ticker, activeTab === 'stock');
 
-  const stock = useMemo(() => buildStockFromFinviz(finvizQuote, smaData), [finvizQuote, smaData]);
+  const stock = useMemo(() => buildStockFromTickerInfo(tickerInfo, smaData), [tickerInfo, smaData]);
 
   // Merge Polygon news + MarketBriefing news into a single sorted feed
   const combinedNews = useMemo(() => {
@@ -161,23 +135,7 @@ function App() {
   const [earningsPreviewLoading, setEarningsPreviewLoading] = useState(false);
   const [earningsPreviewError, setEarningsPreviewError] = useState(null);
 
-  const earningsDaysAway = useMemo(() => {
-    const fKeys = Object.keys(finvizQuote?.fundamentals || {});
-    const earningsKey = fKeys.find(k => k.endsWith('Earnings') || k === 'Earnings');
-    const earningsDate = earningsKey ? finvizQuote.fundamentals[earningsKey] : null;
-    if (!earningsDate) return null;
-    const parts = earningsDate.match(/([A-Za-z]+)\s+(\d+)/);
-    if (!parts) return null;
-    const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
-    const m = months[parts[1]];
-    const d = parseInt(parts[2]);
-    if (m === undefined) return null;
-    const now = new Date();
-    let ed = new Date(now.getFullYear(), m, d);
-    if (ed < new Date(now.getTime() - 180 * 86400000)) ed = new Date(now.getFullYear() + 1, m, d);
-    now.setHours(0, 0, 0, 0);
-    return Math.round((ed - now) / 86400000);
-  }, [finvizQuote]);
+  const earningsDaysAway = null;
 
   useEffect(() => {
     if (!ticker || earningsDaysAway === null || earningsDaysAway < 0 || earningsDaysAway > 30) {
@@ -471,7 +429,7 @@ function App() {
 
             {/* Stock content */}
             <div className="flex flex-col gap-5">
-              <StockOverviewSection data={finvizQuote} loading={loading} error={errors.finvizQuote} />
+              <StockOverviewSection data={tickerInfo} loading={loading} error={errors.tickerInfo} />
 
               {/* Interactive Chart */}
               <StockChart smaData={smaData} ticker={ticker} loading={loading} />
@@ -525,12 +483,11 @@ function App() {
 
               {ticker && <OptionsSection ticker={ticker} />}
 
-              <SectionDivider title="Peers" subtitle={loadingPeers ? 'Loading...' : ''} />
+              <SectionDivider title="Peers" />
               <SimilarStocksSection
-                data={finvizPeers}
-                loading={loadingPeers}
-                error={errors.finvizPeers}
-                industry={finvizQuote?.industry}
+                data={null}
+                loading={false}
+                error={null}
                 onTickerClick={handleTickerClick}
               />
 

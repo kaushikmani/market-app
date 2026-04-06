@@ -4,8 +4,7 @@ import { ApiService } from '../services/ApiService';
 export function useMarketData(ticker, enabled = false) {
   const [news, setNews] = useState(null);
   const [stockNews, setStockNews] = useState(null);
-  const [finvizQuote, setFinvizQuote] = useState(null);
-  const [finvizPeers, setFinvizPeers] = useState(null);
+  const [tickerInfo, setTickerInfo] = useState(null);
   const [smaData, setSmaData] = useState(null);
   const [marketBriefing, setMarketBriefing] = useState(null);
   const [watchlistScan, setWatchlistScan] = useState(null);
@@ -13,7 +12,6 @@ export function useMarketData(ticker, enabled = false) {
   const [loadingScan, setLoadingScan] = useState(true);
   const [loadingMarketNews, setLoadingMarketNews] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [loadingPeers, setLoadingPeers] = useState(false);
   const [loadingNews, setLoadingNews] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -37,25 +35,21 @@ export function useMarketData(ticker, enabled = false) {
     if (!mountedRef.current) return;
     setLoading(true);
     setErrors({});
-    setFinvizPeers(null);
-    setLoadingPeers(false);
 
     const results = await Promise.allSettled([
-      ApiService.getFinvizQuote(ticker),
+      ApiService.getTickerInfo(ticker),
       ApiService.getSMAs(ticker),
     ]);
 
     // Bail if this request was superseded or component unmounted
     if (controller.signal.aborted || !mountedRef.current) return;
 
-    const [finvizRes, smaRes] = results;
+    const [tickerInfoRes, smaRes] = results;
 
-    let quoteData = null;
-    if (finvizRes.status === 'fulfilled') {
-      quoteData = finvizRes.value;
-      setFinvizQuote(quoteData);
+    if (tickerInfoRes.status === 'fulfilled') {
+      setTickerInfo(tickerInfoRes.value);
     } else {
-      setErrors(e => ({ ...e, finvizQuote: finvizRes.reason.message }));
+      setErrors(e => ({ ...e, tickerInfo: tickerInfoRes.reason.message }));
     }
 
     if (smaRes.status === 'fulfilled') setSmaData(smaRes.value);
@@ -69,15 +63,6 @@ export function useMarketData(ticker, enabled = false) {
       .then(data => { if (mountedRef.current && !controller.signal.aborted) setStockNews(data); })
       .catch(err => { if (mountedRef.current && !controller.signal.aborted) setErrors(e => ({ ...e, stockNews: err.message })); })
       .finally(() => { if (mountedRef.current && !controller.signal.aborted) setLoadingNews(false); });
-
-    // Background: peers (needs peerTickers from quote)
-    if (quoteData?.peerTickers?.length > 0) {
-      setLoadingPeers(true);
-      ApiService.getFinvizPeers(quoteData.peerTickers.join(','))
-        .then(data => { if (mountedRef.current && !controller.signal.aborted) setFinvizPeers(data); })
-        .catch(err => { if (mountedRef.current && !controller.signal.aborted) setErrors(e => ({ ...e, finvizPeers: err.message })); })
-        .finally(() => { if (mountedRef.current && !controller.signal.aborted) setLoadingPeers(false); });
-    }
   }, [ticker]);
 
   useEffect(() => {
@@ -127,8 +112,7 @@ export function useMarketData(ticker, enabled = false) {
   return {
     news,
     stockNews,
-    finvizQuote,
-    finvizPeers,
+    tickerInfo,
     smaData,
     marketBriefing,
     watchlistScan,
@@ -136,7 +120,6 @@ export function useMarketData(ticker, enabled = false) {
     loadingScan,
     loadingMarketNews,
     loading,
-    loadingPeers,
     loadingNews,
     errors,
     refetch: fetchAll,

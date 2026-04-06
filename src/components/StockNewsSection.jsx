@@ -4,7 +4,6 @@ import { Theme } from '../models/Theme';
 const TABS = [
   { key: 'all', label: 'All' },
   { key: 'google', label: 'News' },
-  { key: 'finviz', label: 'Finviz' },
   { key: 'x', label: 'X' },
 ];
 
@@ -84,16 +83,12 @@ const NewsItem = ({ item }) => {
           fontWeight: 700,
           padding: '1px 6px',
           borderRadius: Theme.radius.xs,
-          background: isX ? 'rgba(34, 211, 238, 0.08)' :
-            item.provider === 'finviz' ? Theme.colors.accentBlueDim :
-            'rgba(255, 255, 255, 0.04)',
-          color: isX ? Theme.colors.cyan :
-            item.provider === 'finviz' ? Theme.colors.accentBlue :
-            Theme.colors.tertiaryText,
+          background: isX ? 'rgba(34, 211, 238, 0.08)' : 'rgba(255, 255, 255, 0.04)',
+          color: isX ? Theme.colors.cyan : Theme.colors.tertiaryText,
           letterSpacing: '0.04em',
           textTransform: 'uppercase',
         }}>
-          {item.provider === 'google' ? 'NEWS' : item.provider === 'finviz' ? 'FINVIZ' : 'X'}
+          {isX ? 'X' : 'NEWS'}
         </span>
 
         {isX && item.metrics && (
@@ -130,7 +125,6 @@ export const StockNewsSection = ({ data, loading, error }) => {
 
   const allItems = [
     ...(data.google || []),
-    ...(data.finviz || []),
     ...(data.x || []),
   ].sort((a, b) => {
     if (a.time && b.time) return new Date(b.time) - new Date(a.time);
@@ -142,7 +136,6 @@ export const StockNewsSection = ({ data, loading, error }) => {
   const counts = {
     all: allItems.length,
     google: (data.google || []).length,
-    finviz: (data.finviz || []).length,
     x: (data.x || []).length,
   };
 

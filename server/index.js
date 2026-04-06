@@ -4,14 +4,13 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env') });
 import { scrapeNews } from './scrapers/news.js';
-import { scrapeFinvizQuote } from './scrapers/finvizQuote.js';
-import { scrapeFinvizPeers } from './scrapers/finvizPeers.js';
 import { fetchSMAs } from './scrapers/yahooSMA.js';
 import { scrapeGoogleNews } from './scrapers/googleNews.js';
-import { scrapeFinvizNews } from './scrapers/finvizNews.js';
 import { scrapeXPosts, getXFeed } from './scrapers/xNews.js';
 import { scrapeMarketBriefing } from './scrapers/marketBriefing.js';
 import { scanWatchlist } from './scrapers/watchlistScanner.js';
@@ -190,54 +189,24 @@ app.get('/api/news', async (req, res) => {
 });
 
 
-app.get('/api/finviz-quote', async (req, res) => {
-  const { ticker } = req.query;
-  const tickerErr = validateTicker(ticker);
-  if (tickerErr) return res.status(400).json({ error: tickerErr });
-
-  try {
-    const data = await scrapeFinvizQuote(ticker);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/finviz-peers', async (req, res) => {
-  const { tickers } = req.query;
-  if (!tickers) return res.status(400).json({ error: 'tickers query param required' });
-
-  try {
-    const data = await scrapeFinvizPeers(tickers);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.get('/api/stock-news', async (req, res) => {
   const { ticker } = req.query;
   const tickerErr = validateTicker(ticker);
   if (tickerErr) return res.status(400).json({ error: tickerErr });
 
   try {
-    // Fetch all sources in parallel: Google News + Finviz News + X Posts
-    const [googleRes, finvizRes, xRes] = await Promise.allSettled([
+    const [googleRes, xRes] = await Promise.allSettled([
       scrapeGoogleNews(ticker),
-      scrapeFinvizNews(ticker),
       scrapeXPosts(ticker),
     ]);
 
     const googleNews = googleRes.status === 'fulfilled' && googleRes.value.success ? googleRes.value.news : [];
-    const finvizNews = finvizRes.status === 'fulfilled' && finvizRes.value.success ? finvizRes.value.news : [];
     const xPosts     = xRes.status === 'fulfilled' && xRes.value.success ? xRes.value.news : [];
 
     res.json({
       ticker: ticker.toUpperCase(),
       google: googleNews,
-      finviz: finvizNews,
       x: xPosts,
-      polygon: [], // removed — no longer using Polygon
       success: true,
     });
   } catch (error) {
@@ -280,21 +249,13 @@ app.get('/api/earnings-preview', heavyLimiter, async (req, res) => {
   if (tickerErr) return res.status(400).json({ error: tickerErr });
 
   try {
-    // Fetch finviz data for context
+    // Fetch Schwab quote for context
     let context = {};
     try {
-      const fData = await scrapeFinvizQuote(ticker);
-      if (fData?.success && fData.fundamentals) {
-        const f = fData.fundamentals;
-        const earningsKey = Object.keys(f).find(k => k.endsWith('Earnings') || k === 'Earnings');
-        context = {
-          price: fData.price,
-          earningsDate: earningsKey ? f[earningsKey] : null,
-          sector: fData.sector,
-          industry: fData.industry,
-          eps: f['EPS (ttm)'],
-          pe: f['P/E'],
-        };
+      const quotes = await getQuotes([ticker.toUpperCase()]);
+      const q = quotes[ticker.toUpperCase()] || {};
+      if (q.price) {
+        context = { price: q.price };
       }
     } catch { /* ignore — generate preview with empty context */ }
 

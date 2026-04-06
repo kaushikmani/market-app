@@ -13,7 +13,7 @@ const QUICK_QUESTIONS = [
   'What are analysts expecting this quarter?',
 ];
 
-function buildContext(ticker, smaData, finvizQuote, earningsHistory) {
+function buildContext(ticker, smaData, earningsHistory) {
   const lines = [];
   if (smaData?.price) lines.push(`Current price: $${smaData.price}`);
   if (smaData?.rsi)   lines.push(`RSI (14): ${smaData.rsi.toFixed(1)}`);
@@ -22,17 +22,6 @@ function buildContext(ticker, smaData, finvizQuote, earningsHistory) {
       .map(([p, s]) => `SMA${p}: $${s.value} (${s.pctFromPrice > 0 ? '+' : ''}${s.pctFromPrice}% from price)`)
       .join(', ');
     lines.push(`SMAs: ${smaLines}`);
-  }
-  const f = finvizQuote?.fundamentals;
-  if (f) {
-    if (f['Sector'])   lines.push(`Sector: ${f['Sector']}`);
-    if (f['Industry']) lines.push(`Industry: ${f['Industry']}`);
-    if (f['Market Cap']) lines.push(`Market Cap: ${f['Market Cap']}`);
-    if (f['Earnings'])   lines.push(`Next earnings: ${f['Earnings']}`);
-    if (f['Perf Week'])  lines.push(`1W perf: ${f['Perf Week']}`);
-    if (f['Perf Month']) lines.push(`1M perf: ${f['Perf Month']}`);
-    if (f['52W High'])   lines.push(`52W High: ${f['52W High']}`);
-    if (f['52W Low'])    lines.push(`52W Low: ${f['52W Low']}`);
   }
   if (earningsHistory?.history?.length > 0) {
     const lines2 = earningsHistory.history.slice(0, 6).map(h =>
@@ -46,7 +35,7 @@ function buildContext(ticker, smaData, finvizQuote, earningsHistory) {
   return lines.join('\n');
 }
 
-export function AskAIPanel({ ticker, smaData, finvizQuote, onClose }) {
+export function AskAIPanel({ ticker, smaData, onClose }) {
   const [messages, setMessages] = useState([]);
   const [input,    setInput]    = useState('');
   const [loading,  setLoading]  = useState(false);
