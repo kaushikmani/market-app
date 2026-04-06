@@ -64,7 +64,7 @@ export function AskAIPanel({ ticker, smaData, onClose }) {
     setMessages(prev => [...prev, { role: 'user', text: q }]);
     setLoading(true);
     try {
-      const context = buildContext(ticker, smaData, finvizQuote, earningsHistory);
+      const context = buildContext(ticker, smaData, earningsHistory);
       const data = await ApiService.askAI({ ticker, question: q, context });
       setMessages(prev => [...prev, { role: 'ai', text: data.answer || 'No response.' }]);
     } catch {
