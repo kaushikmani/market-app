@@ -375,50 +375,81 @@ router.post('/notes', async (req, res) => {
 // POST /api/notes/ask — ask a question about your notes using Gemini
 router.post('/notes/ask', heavyLimiter, async (req, res) => {
   try {
-    const { question, days = 21 } = req.body;
+    const { question, days = 30 } = req.body;
     if (!question?.trim()) return res.status(400).json({ error: 'Question required' });
 
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
-    let notes = getAllNotes().filter(n => new Date(n.createdAt) >= cutoff);
+    const allNotes = getAllNotes()
+      .filter(n => new Date(n.createdAt) >= cutoff)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // most recent first
 
-    if (!notes.length) {
+    if (!allNotes.length) {
       return res.json({ answer: `No notes found in the last ${days} days.`, noteCount: 0 });
     }
 
-    // Extract ticker mentions from the question for smarter context filtering
+    // Extract ticker mentions from the question
     const questionUpper = question.toUpperCase();
-    const dollarTickers = (question.match(/\$([A-Z]{1,5})\b/g) || []).map(t => t.slice(1));
-    const allKnownTickers = [...new Set(notes.flatMap(n => n.tickers || []).map(t => t.toUpperCase()))];
+    const dollarTickers = (question.match(/\$([A-Z]{1,5})\b/g) || []).map(t => t.slice(1).toUpperCase());
+    const allKnownTickers = [...new Set(allNotes.flatMap(n => n.tickers || []).map(t => t.toUpperCase()))];
     const wordTickers = allKnownTickers.filter(t => new RegExp(`\\b${t}\\b`).test(questionUpper));
     const mentionedTickers = [...new Set([...dollarTickers, ...wordTickers])];
 
-    // Prioritize notes tagged with mentioned tickers; fall back to all if none match
+    let notes = allNotes;
+
     if (mentionedTickers.length > 0) {
-      const tickerNotes = notes.filter(n =>
+      // 1st pass: notes tagged with the ticker
+      let tickerNotes = allNotes.filter(n =>
         n.tickers?.some(t => mentionedTickers.includes(t.toUpperCase()))
       );
-      if (tickerNotes.length > 0) notes = tickerNotes;
+
+      // 2nd pass: full-text search if tag lookup found nothing
+      if (tickerNotes.length === 0) {
+        tickerNotes = allNotes.filter(n => {
+          const text = ((n.content || '') + ' ' + (n.summary || []).join(' ')).toUpperCase();
+          return mentionedTickers.some(t => text.includes(t));
+        });
+      }
+
+      if (tickerNotes.length > 0) {
+        // For ticker-specific questions, limit to the 3 most recent relevant notes
+        notes = tickerNotes.slice(0, 3);
+      } else {
+        // Ticker not found in any notes at all
+        return res.json({
+          answer: `I couldn't find any notes mentioning ${mentionedTickers.join(', ')}. Try checking if notes for that ticker have been saved.`,
+          noteCount: 0,
+        });
+      }
+    } else {
+      // General question — use the 5 most recent notes
+      notes = allNotes.slice(0, 5);
     }
 
     const context = notes.map(n => {
-      const summary = Array.isArray(n.summary) ? n.summary.join(' ') : '';
-      const body = (summary || n.content || '').slice(0, 1200);
+      const summaryText = Array.isArray(n.summary) && n.summary.length > 0
+        ? n.summary.join('\n')
+        : '';
+      // Prefer summary bullets, fall back to raw content
+      const body = (summaryText || n.content || '').slice(0, 2500);
       const tickers = n.tickers?.length ? ` [${n.tickers.join(', ')}]` : '';
-      return `[${n.date}] ${n.title}${tickers}\n${body}`;
+      return `[${n.date || n.createdAt?.slice(0, 10)}] ${n.title}${tickers}\n${body}`;
     }).join('\n\n---\n\n');
 
-    const prompt = `You are analyzing a trader's personal journal. Answer the question based ONLY on the notes below. Be direct and specific — reference exact dates, tickers, and price levels from the notes. If the answer isn't in the notes, say so clearly.
+    const prompt = `You are analyzing a trader's personal journal. Answer the question based ONLY on the notes provided. Be direct and specific — include exact dates, price levels, and tickers mentioned in the notes. If the notes don't contain the answer, say so clearly.
 
 NOTES:
 ${context}
 
 QUESTION: ${question}
 
-Answer concisely (2-4 sentences max unless a list is needed):`;
+Answer (be concise and specific, 2-5 sentences unless a list is clearly better):`;
 
-    const answer = await callGeminiDirect(prompt, 3, 400);
-    res.json({ answer: answer?.trim() || 'No answer generated.', noteCount: notes.length });
+    const answer = await callGeminiDirect(prompt, 3, 700);
+    res.json({
+      answer: answer?.trim() || 'The model did not return an answer. Try rephrasing your question.',
+      noteCount: notes.length,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
