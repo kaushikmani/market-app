@@ -372,11 +372,16 @@ router.post('/notes', async (req, res) => {
   }
 });
 
-// POST /api/notes/ask — ask a question about your notes using Gemini
+// POST /api/notes/ask — ask a question about your notes (SSE streaming)
 router.post('/notes/ask', heavyLimiter, async (req, res) => {
   try {
     const { question, days = 30 } = req.body;
     if (!question?.trim()) return res.status(400).json({ error: 'Question required' });
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
 
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
@@ -385,7 +390,8 @@ router.post('/notes/ask', heavyLimiter, async (req, res) => {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)); // most recent first
 
     if (!allNotes.length) {
-      return res.json({ answer: `No notes found in the last ${days} days.`, noteCount: 0 });
+      res.write(`data: ${JSON.stringify({ done: true, answer: `No notes found in the last ${days} days.` })}\n\n`);
+      res.end(); return;
     }
 
     // Extract ticker mentions from the question
@@ -416,10 +422,8 @@ router.post('/notes/ask', heavyLimiter, async (req, res) => {
         notes = tickerNotes.slice(0, 3);
       } else {
         // Ticker not found in any notes at all
-        return res.json({
-          answer: `I couldn't find any notes mentioning ${mentionedTickers.join(', ')}. Try checking if notes for that ticker have been saved.`,
-          noteCount: 0,
-        });
+        res.write(`data: ${JSON.stringify({ done: true, answer: `I couldn't find any notes mentioning ${mentionedTickers.join(', ')}.` })}\n\n`);
+        res.end(); return;
       }
     } else {
       // General question — use the 5 most recent notes
@@ -430,28 +434,42 @@ router.post('/notes/ask', heavyLimiter, async (req, res) => {
       const summaryText = Array.isArray(n.summary) && n.summary.length > 0
         ? n.summary.join('\n')
         : '';
-      // Prefer summary bullets, fall back to raw content
       const body = (summaryText || n.content || '').slice(0, 2500);
       const tickers = n.tickers?.length ? ` [${n.tickers.join(', ')}]` : '';
       return `[${n.date || n.createdAt?.slice(0, 10)}] ${n.title}${tickers}\n${body}`;
     }).join('\n\n---\n\n');
 
-    const prompt = `You are analyzing a trader's personal journal. Answer the question based ONLY on the notes provided. Be direct and specific — include exact dates, price levels, and tickers mentioned in the notes. If the notes don't contain the answer, say so clearly.
+    const prompt = `You are analyzing a trader's personal journal. Answer the question based ONLY on the notes provided. Be direct and specific — include exact dates, price levels, and tickers from the notes. If not in the notes, say so.
 
 NOTES:
 ${context}
 
 QUESTION: ${question}
 
-Answer (be concise and specific, 2-5 sentences unless a list is clearly better):`;
+Answer concisely (2-5 sentences):`;
 
-    const answer = await callGeminiDirect(prompt, 3, 700);
-    res.json({
-      answer: answer?.trim() || 'The model did not return an answer. Try rephrasing your question.',
-      noteCount: notes.length,
-    });
+    let answered = false;
+    await callGeminiStream(
+      prompt,
+      (token) => {
+        if (!res.writableEnded) {
+          answered = true;
+          res.write(`data: ${JSON.stringify({ token })}\n\n`);
+        }
+      },
+      500
+    );
+
+    if (!res.writableEnded) {
+      if (!answered) res.write(`data: ${JSON.stringify({ token: 'No answer generated. Try rephrasing.' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    }
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+      res.end();
+    }
   }
 });
 

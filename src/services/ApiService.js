@@ -107,12 +107,35 @@ export const ApiService = {
   getGamePlan: () =>
     fetchJson(`${API_BASE}/notes/gameplan`),
 
-  askNotes: (question, days = 21) =>
-    fetch(`${API_BASE}/notes/ask`, {
+  askNotes: async (question, onToken) => {
+    const res = await fetch(`${API_BASE}/notes/ask`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, days }),
-    }).then(r => { if (!r.ok) throw new Error(`API error: ${r.status}`); return r.json(); }),
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const obj = JSON.parse(line.slice(6));
+          if (obj.token) { fullText += obj.token; onToken(obj.token); }
+          if (obj.answer) { fullText = obj.answer; onToken(obj.answer); }
+          if (obj.error) throw new Error(obj.error);
+        } catch (e) { if (!(e instanceof SyntaxError)) throw e; }
+      }
+    }
+    return fullText;
+  },
 
   createNote: (data) =>
     fetch(`${API_BASE}/notes`, {

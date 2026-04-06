@@ -775,18 +775,24 @@ const NotesChat = () => {
     const q = question.trim();
     if (!q) return;
     setQuestion('');
-    const idx = history.length;
-    setHistory(prev => [...prev, { question: q, answer: null }]);
+    const msgId = Date.now();
+    setHistory(prev => [...prev, { id: msgId, question: q, answer: null }]);
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 30);
     try {
-      const { answer } = await ApiService.askNotes(q);
-      setHistory(prev => prev.map((h, i) => i === idx ? { question: q, answer } : h));
+      await ApiService.askNotes(q, (token) => {
+        setHistory(prev => prev.map(h =>
+          h.id === msgId ? { ...h, answer: (h.answer || '') + token } : h
+        ));
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      });
     } catch (e) {
-      setHistory(prev => prev.map((h, i) => i === idx ? { question: q, answer: `Error: ${e.message}` } : h));
+      setHistory(prev => prev.map(h =>
+        h.id === msgId ? { ...h, answer: `Error: ${e.message}` } : h
+      ));
     } finally {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [question, history.length]);
+  }, [question]);
 
   const handleKey = (e) => {
     if (e.key === 'Enter') { e.preventDefault(); ask(); }
@@ -896,8 +902,8 @@ const NotesChat = () => {
                 </span>
               </div>
             )}
-            {history.map((h, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {history.map((h) => (
+              <div key={h.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {/* Question bubble */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <div style={{
