@@ -4,7 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
-import { transcribeAudio, extractTickers, summarizeTranscript, generateBrief, callGemini, callGeminiDirect } from '../services/whisperService.js';
+import { transcribeAudio, extractTickers, summarizeTranscript, generateBrief, callGemini, callGeminiDirect, callGeminiStream } from '../services/whisperService.js';
+import { getQuotes } from '../services/schwab.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NOTES_DIR = path.join(__dirname, '..', 'data', 'notes');
@@ -172,6 +173,164 @@ router.get('/notes/brief', heavyLimiter, async (req, res) => {
   }
 });
 
+// GET /api/notes/yesterday-watchlist — tickers from yesterday's notes with live prices
+router.get('/notes/yesterday-watchlist', async (req, res) => {
+  try {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    const notes = getAllNotes().filter(n => {
+      const d = n.date || n.createdAt?.slice(0, 10);
+      return d === yesterdayStr;
+    });
+
+    const tickerSet = new Set();
+    notes.forEach(n => (n.tickers || []).forEach(t => tickerSet.add(t.toUpperCase())));
+    const tickers = Array.from(tickerSet);
+
+    if (tickers.length === 0) return res.json({ success: true, tickers: [], date: yesterdayStr });
+
+    const quotes = await getQuotes(tickers);
+    const result = tickers.map(ticker => {
+      const q = quotes[ticker] || {};
+      return {
+        ticker,
+        price: q.price ?? null,
+        changePct: q.changePct ?? null,
+        change: q.change ?? null,
+        preMarketChangePct: q.preMarketChangePct ?? null,
+      };
+    }).filter(r => r.price !== null);
+
+    res.json({ success: true, tickers: result, date: yesterdayStr });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── All-notes AI summary ──────────────────────────────────────────────────────
+let summaryCache = { data: null, generatedAt: 0 };
+const SUMMARY_CACHE_TTL = 15 * 60 * 1000; // 15 min
+
+export function invalidateSummaryCache() {
+  summaryCache = { data: null, generatedAt: 0 };
+}
+
+const ALL_NOTES_SUMMARY_PROMPT = `You are a trading coach reviewing a trader's personal journal from the last 3 weeks.
+
+Write a comprehensive summary of everything this trader has been thinking about, watching, and working on.
+Organize it into readable paragraphs — not bullet points. Cover:
+1. What stocks/sectors they've been focused on and their thesis for each
+2. Key price levels and setups they've identified
+3. Patterns in their thinking (recurring themes, biases, concerns)
+4. Notable trades or ideas mentioned
+
+Be specific — include ticker symbols, price levels, and exact setups when they appear.
+Write in second person ("You've been watching...", "Your thesis on NVDA is...").
+Keep it concise but complete — aim for 3-5 paragraphs.
+
+Notes:
+`;
+
+export async function generateNotesSummary() {
+  const allNotes = getAllNotes()
+    .filter(n => n.content || (n.summary && n.summary.length > 0))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  if (allNotes.length === 0) return;
+
+  // Find the 3 most recent distinct dates that have notes
+  const dates = [...new Set(allNotes.map(n => n.date || n.createdAt?.slice(0, 10)))];
+  const recentDates = new Set(dates.slice(0, 3));
+  const notes = allNotes.filter(n => recentDates.has(n.date || n.createdAt?.slice(0, 10)));
+
+  if (notes.length === 0) return;
+
+  const input = notes.map(n => {
+    const body = n.summary?.length > 0
+      ? n.summary.join('\n')
+      : (n.content || '').slice(0, 2000);
+    const tickers = n.tickers?.length ? ` [${n.tickers.join(', ')}]` : '';
+    return `[${n.date}] ${n.title}${tickers}\n${body}`;
+  }).join('\n\n---\n\n');
+
+  const text = await callGeminiDirect(ALL_NOTES_SUMMARY_PROMPT + input, 3, 800);
+  if (text) summaryCache = { data: text.trim(), generatedAt: Date.now() };
+}
+
+router.get('/notes/summary', heavyLimiter, async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    if (!force && summaryCache.data && (Date.now() - summaryCache.generatedAt) < SUMMARY_CACHE_TTL) {
+      return res.json({ success: true, summary: summaryCache.data, cached: true });
+    }
+
+    await generateNotesSummary();
+    if (!summaryCache.data) return res.json({ success: true, summary: null, message: 'No recent notes' });
+    res.json({ success: true, summary: summaryCache.data });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/notes/summary/stream — SSE streaming version
+router.get('/notes/summary/stream', heavyLimiter, async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const force = req.query.force === 'true';
+
+  // Serve from cache instantly if warm
+  if (!force && summaryCache.data && (Date.now() - summaryCache.generatedAt) < SUMMARY_CACHE_TTL) {
+    res.write(`data: ${JSON.stringify({ text: summaryCache.data, done: true })}\n\n`);
+    res.end();
+    return;
+  }
+
+  // Build notes input (same logic as generateNotesSummary)
+  const allNotes = getAllNotes()
+    .filter(n => n.content || (n.summary && n.summary.length > 0))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  if (allNotes.length === 0) {
+    res.write(`data: ${JSON.stringify({ done: true, empty: true })}\n\n`);
+    res.end();
+    return;
+  }
+
+  const dates = [...new Set(allNotes.map(n => n.date || n.createdAt?.slice(0, 10)))];
+  const recentDates = new Set(dates.slice(0, 3));
+  const notes = allNotes.filter(n => recentDates.has(n.date || n.createdAt?.slice(0, 10)));
+
+  const input = notes.map(n => {
+    const body = n.summary?.length > 0 ? n.summary.join('\n') : (n.content || '').slice(0, 2000);
+    const tickers = n.tickers?.length ? ` [${n.tickers.join(', ')}]` : '';
+    return `[${n.date}] ${n.title}${tickers}\n${body}`;
+  }).join('\n\n---\n\n');
+
+  try {
+    const fullText = await callGeminiStream(
+      ALL_NOTES_SUMMARY_PROMPT + input,
+      (token) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify({ token })}\n\n`); },
+      800
+    );
+    summaryCache = { data: fullText.trim(), generatedAt: Date.now() };
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      res.end();
+    }
+  } catch (e) {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
 // GET /api/notes/:id — single note
 router.get('/notes/:id', (req, res) => {
   try {
@@ -221,20 +380,35 @@ router.post('/notes/ask', heavyLimiter, async (req, res) => {
 
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
-    const notes = getAllNotes().filter(n => new Date(n.createdAt) >= cutoff);
+    let notes = getAllNotes().filter(n => new Date(n.createdAt) >= cutoff);
 
     if (!notes.length) {
       return res.json({ answer: `No notes found in the last ${days} days.`, noteCount: 0 });
     }
 
+    // Extract ticker mentions from the question for smarter context filtering
+    const questionUpper = question.toUpperCase();
+    const dollarTickers = (question.match(/\$([A-Z]{1,5})\b/g) || []).map(t => t.slice(1));
+    const allKnownTickers = [...new Set(notes.flatMap(n => n.tickers || []).map(t => t.toUpperCase()))];
+    const wordTickers = allKnownTickers.filter(t => new RegExp(`\\b${t}\\b`).test(questionUpper));
+    const mentionedTickers = [...new Set([...dollarTickers, ...wordTickers])];
+
+    // Prioritize notes tagged with mentioned tickers; fall back to all if none match
+    if (mentionedTickers.length > 0) {
+      const tickerNotes = notes.filter(n =>
+        n.tickers?.some(t => mentionedTickers.includes(t.toUpperCase()))
+      );
+      if (tickerNotes.length > 0) notes = tickerNotes;
+    }
+
     const context = notes.map(n => {
       const summary = Array.isArray(n.summary) ? n.summary.join(' ') : '';
-      const body = summary || n.content || '';
+      const body = (summary || n.content || '').slice(0, 1200);
       const tickers = n.tickers?.length ? ` [${n.tickers.join(', ')}]` : '';
       return `[${n.date}] ${n.title}${tickers}\n${body}`;
     }).join('\n\n---\n\n');
 
-    const prompt = `You are analyzing a trader's personal journal. Answer the question based ONLY on the notes below. Be direct and specific — reference exact dates, tickers, and levels from the notes. If the answer isn't in the notes, say so clearly.
+    const prompt = `You are analyzing a trader's personal journal. Answer the question based ONLY on the notes below. Be direct and specific — reference exact dates, tickers, and price levels from the notes. If the answer isn't in the notes, say so clearly.
 
 NOTES:
 ${context}
@@ -243,72 +417,13 @@ QUESTION: ${question}
 
 Answer concisely (2-4 sentences max unless a list is needed):`;
 
-    const answer = await callGeminiDirect(prompt);
+    const answer = await callGeminiDirect(prompt, 3, 400);
     res.json({ answer: answer?.trim() || 'No answer generated.', noteCount: notes.length });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ── All-notes Gemini summary ──────────────────────────────────────────────────
-let summaryCache = { data: null, generatedAt: 0 };
-const SUMMARY_CACHE_TTL = 15 * 60 * 1000; // 15 min
-
-export function invalidateSummaryCache() {
-  summaryCache = { data: null, generatedAt: 0 };
-}
-
-const ALL_NOTES_SUMMARY_PROMPT = `You are a trading coach reviewing a trader's personal journal from the last 3 weeks.
-
-Write a comprehensive summary of everything this trader has been thinking about, watching, and working on.
-Organize it into readable paragraphs — not bullet points. Cover:
-1. What stocks/sectors they've been focused on and their thesis for each
-2. Key price levels and setups they've identified
-3. Patterns in their thinking (recurring themes, biases, concerns)
-4. Notable trades or ideas mentioned
-
-Be specific — include ticker symbols, price levels, and exact setups when they appear.
-Write in second person ("You've been watching...", "Your thesis on NVDA is...").
-Keep it concise but complete — aim for 3-5 paragraphs.
-
-Notes:
-`;
-
-export async function generateNotesSummary() {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 3);
-  const notes = getAllNotes()
-    .filter(n => new Date(n.createdAt) >= cutoff)
-    .filter(n => n.content || (n.summary && n.summary.length > 0));
-
-  if (notes.length === 0) return;
-
-  const input = notes.map(n => {
-    const body = n.summary?.length > 0
-      ? n.summary.join('\n')
-      : (n.content || '').slice(0, 2000);
-    const tickers = n.tickers?.length ? ` [${n.tickers.join(', ')}]` : '';
-    return `[${n.date}] ${n.title}${tickers}\n${body}`;
-  }).join('\n\n---\n\n');
-
-  const text = await callGeminiDirect(ALL_NOTES_SUMMARY_PROMPT + input);
-  if (text) summaryCache = { data: text.trim(), generatedAt: Date.now() };
-}
-
-router.get('/notes/summary', heavyLimiter, async (req, res) => {
-  try {
-    const force = req.query.force === 'true';
-    if (!force && summaryCache.data && (Date.now() - summaryCache.generatedAt) < SUMMARY_CACHE_TTL) {
-      return res.json({ success: true, summary: summaryCache.data, cached: true });
-    }
-
-    await generateNotesSummary();
-    if (!summaryCache.data) return res.json({ success: true, summary: null, message: 'No recent notes' });
-    res.json({ success: true, summary: summaryCache.data });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // In-memory transcription job status
 const transcriptionJobs = new Map(); // jobId → { stage, progress, note, error }

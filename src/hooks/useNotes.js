@@ -18,6 +18,8 @@ export function useNotes(days = 5) {
       setError(null);
       const data = await ApiService.getNotes(days);
       setNotes(data.notes || []);
+      // Pre-warm summary cache in background so Generate is instant
+      ApiService.getNotesSummary(false).catch(() => {});
     } catch (err) {
       setError(err.message);
     } finally {

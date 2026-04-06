@@ -9,6 +9,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        timeout: 300000,      // 5 min — Ollama summaries can be slow
+        proxyTimeout: 300000,
       },
     },
   },

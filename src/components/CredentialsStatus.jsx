@@ -48,13 +48,12 @@ export function CredentialsStatus() {
 
   if (!status) return null;
 
-  const { schwab, gemini } = status;
+  const { schwab, ollama } = status;
 
   // Determine overall level
   const levels = [
     schwab.accessToken.level,
     schwab.refreshToken.level,
-    gemini.level,
   ];
   const overallLevel =
     levels.includes('expired') || levels.includes('missing') ? 'expired' :
@@ -156,11 +155,11 @@ export function CredentialsStatus() {
             }
           />
 
-          {/* Gemini */}
+          {/* Ollama */}
           <Row
-            label="Gemini API Key"
-            level={gemini.level}
-            detail={gemini.set ? 'Set' : 'Not set — add GEMINI_API_KEY to .env'}
+            label="Ollama"
+            level="ok"
+            detail={`${ollama?.model ?? 'gemma4:e4b'} @ ${ollama?.url ?? 'localhost:11434'}`}
           />
 
           <div

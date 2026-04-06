@@ -436,13 +436,43 @@ const NotesSummary = ({ onRefreshTrigger }) => {
 
   const load = useCallback(async (force = false) => {
     setLoading(true);
+    setSummary(null);
     setError(null);
     try {
-      const data = await ApiService.getNotesSummary(force);
-      setSummary(data.summary || null);
+      const url = `/api/notes/summary/stream${force ? '?force=true' : ''}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let text = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const obj = JSON.parse(line.slice(6));
+            if (obj.text) { text = obj.text; setSummary(text); }
+            if (obj.token) { text += obj.token; setSummary(text); }
+            if (obj.error) throw new Error(obj.error);
+            if (obj.done) setLoaded(true);
+          } catch (e) {
+            if (!(e instanceof SyntaxError)) throw e;
+          }
+        }
+      }
       setLoaded(true);
     } catch (e) {
       setError(e.message);
+      setLoaded(true);
     } finally {
       setLoading(false);
     }
@@ -462,7 +492,7 @@ const NotesSummary = ({ onRefreshTrigger }) => {
               3-Day Summary
             </span>
             <div style={{ fontSize: '10px', color: Theme.colors.tertiaryText, marginTop: '2px' }}>
-              Gemini summary of all your notes from the last 3 days
+              AI summary of your last 3 days with notes
             </div>
           </div>
           <button
@@ -540,6 +570,82 @@ const NotesSummary = ({ onRefreshTrigger }) => {
       {!loading && loaded && !summary && !error && (
         <div style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>No notes found in the last 3 days.</div>
       )}
+    </div>
+  );
+};
+
+// ── Yesterday's Watchlist ─────────────────────────────────────────────────────
+const YesterdayWatchlist = ({ onTickerClick }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    ApiService.getYesterdayWatchlist()
+      .then(res => setData(res))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="card" style={{ padding: '16px', borderLeft: `3px solid ${Theme.colors.accentPurple}` }}>
+        <div style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.tertiaryText, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>
+          Yesterday's Watchlist
+        </div>
+        <div style={{ fontSize: '11px', color: Theme.colors.tertiaryText }}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (error || !data || data.tickers.length === 0) return null;
+
+  return (
+    <div className="card" style={{ padding: '16px', borderLeft: `3px solid ${Theme.colors.accentPurple}` }}>
+      <div style={{ marginBottom: '10px' }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText, marginBottom: '2px' }}>
+          Yesterday's Watchlist
+        </div>
+        <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+          Tickers from {data.date} notes
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        {data.tickers.map(({ ticker, price, changePct, preMarketChangePct }) => {
+          const isUp = changePct > 0;
+          const isDown = changePct < 0;
+          const changeColor = isUp ? Theme.colors.bullishGreen : isDown ? Theme.colors.bearishRed : Theme.colors.secondaryText;
+          return (
+            <div
+              key={ticker}
+              onClick={() => onTickerClick?.(ticker)}
+              style={{
+                padding: '6px 10px',
+                background: Theme.colors.surfaceSubtle,
+                border: `1px solid ${Theme.colors.borderSubtle}`,
+                borderRadius: Theme.radius.sm,
+                cursor: 'pointer',
+                minWidth: '80px',
+              }}
+            >
+              <div style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.primaryText }}>{ticker}</div>
+              {price !== null && (
+                <div style={{ fontSize: '10px', color: Theme.colors.secondaryText }}>${price.toFixed(2)}</div>
+              )}
+              {changePct !== null && (
+                <div style={{ fontSize: '10px', fontWeight: 600, color: changeColor }}>
+                  {changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%
+                </div>
+              )}
+              {preMarketChangePct !== null && preMarketChangePct !== undefined && (
+                <div style={{ fontSize: '9px', color: Theme.colors.tertiaryText }}>
+                  pre: {preMarketChangePct > 0 ? '+' : ''}{preMarketChangePct.toFixed(2)}%
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -649,156 +755,252 @@ const BriefSection = ({ brief, briefLoading, onTickerClick }) => {
   );
 };
 
-// ── Notes Q&A ─────────────────────────────────────────────────────────────────
+// ── Notes Q&A (floating chat panel) ───────────────────────────────────────────
 const NotesChat = () => {
+  const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState('');
-  const [history, setHistory] = useState([]); // [{question, answer}]
-  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]); // [{question, answer}] answer=null means pending
   const inputRef = useRef(null);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 50);
+  }, [open]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [history]);
 
   const ask = useCallback(async () => {
     const q = question.trim();
-    if (!q || loading) return;
+    if (!q) return;
     setQuestion('');
-    setLoading(true);
+    const idx = history.length;
+    setHistory(prev => [...prev, { question: q, answer: null }]);
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 30);
     try {
       const { answer } = await ApiService.askNotes(q);
-      setHistory(prev => [...prev, { question: q, answer }]);
+      setHistory(prev => prev.map((h, i) => i === idx ? { question: q, answer } : h));
     } catch (e) {
-      setHistory(prev => [...prev, { question: q, answer: `Error: ${e.message}` }]);
+      setHistory(prev => prev.map((h, i) => i === idx ? { question: q, answer: `Error: ${e.message}` } : h));
     } finally {
-      setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [question, loading]);
+  }, [question, history.length]);
 
   const handleKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+    if (e.key === 'Enter') { e.preventDefault(); ask(); }
   };
 
   return (
-    <div className="card" style={{ padding: '16px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.tertiaryText, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '12px' }}>
-        Ask your notes
-      </div>
+    <>
+      {/* Toggle button — visible when panel is closed */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          title="Ask your notes"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            width: 48,
+            height: 48,
+            borderRadius: '50%',
+            background: Theme.colors.accentBlue,
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.45)',
+            zIndex: 1000,
+          }}
+        >
+          <svg width="20" height="20" fill="white" viewBox="0 0 24 24">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+          </svg>
+        </button>
+      )}
 
-      {/* History */}
-      {history.length > 0 && (
-        <div style={{ marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {history.map((h, i) => (
-            <div key={i}>
-              {/* Question bubble */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
-                <div style={{
-                  background: Theme.colors.accentBlue,
-                  color: '#fff',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  padding: '7px 12px',
-                  borderRadius: '12px 12px 2px 12px',
-                  maxWidth: '85%',
-                  lineHeight: 1.5,
-                }}>
-                  {h.question}
-                </div>
-              </div>
-              {/* Answer bubble */}
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{
-                  background: Theme.colors.cardBackground,
-                  border: `1px solid ${Theme.colors.cardBorder}`,
-                  color: Theme.colors.secondaryText,
-                  fontSize: '12px',
-                  padding: '8px 12px',
-                  borderRadius: '2px 12px 12px 12px',
-                  maxWidth: '90%',
-                  lineHeight: 1.6,
-                  whiteSpace: 'pre-wrap',
-                }}>
-                  {h.answer}
-                </div>
-              </div>
+      {/* Floating chat panel */}
+      {open && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          width: 340,
+          height: 480,
+          background: Theme.colors.cardBackground,
+          border: `1px solid ${Theme.colors.cardBorder}`,
+          borderRadius: '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 8px 36px rgba(0,0,0,0.55)',
+          zIndex: 1000,
+          overflow: 'hidden',
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: '11px 14px',
+            borderBottom: `1px solid ${Theme.colors.cardBorder}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.primaryText, letterSpacing: '0.02em' }}>
+              Ask your notes
+            </span>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              {history.length > 0 && (
+                <span
+                  onClick={() => setHistory([])}
+                  style={{ fontSize: '11px', color: Theme.colors.tertiaryText, cursor: 'pointer' }}
+                >
+                  Clear
+                </span>
+              )}
+              <button
+                onClick={() => setOpen(false)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: Theme.colors.tertiaryText, fontSize: '18px',
+                  lineHeight: 1, padding: '0 2px', fontFamily: 'inherit',
+                }}
+              >
+                ×
+              </button>
             </div>
-          ))}
-          {loading && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+          </div>
+
+          {/* Message area */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+          }}>
+            {history.length === 0 && (
               <div style={{
-                background: Theme.colors.cardBackground,
-                border: `1px solid ${Theme.colors.cardBorder}`,
-                padding: '8px 14px',
-                borderRadius: '2px 12px 12px 12px',
+                color: Theme.colors.tertiaryText,
+                fontSize: '12px',
+                textAlign: 'center',
+                marginTop: '60px',
+                lineHeight: 1.6,
               }}>
-                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  {[0,1,2].map(i => (
-                    <div key={i} style={{
-                      width: '5px', height: '5px', borderRadius: '50%',
-                      background: Theme.colors.tertiaryText,
-                      animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-                    }} />
-                  ))}
+                Ask anything about your notes.<br />
+                <span style={{ fontSize: '11px', opacity: 0.7 }}>
+                  e.g. "What was my META thesis?"
+                </span>
+              </div>
+            )}
+            {history.map((h, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {/* Question bubble */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{
+                    background: Theme.colors.accentBlue,
+                    color: '#fff',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    padding: '7px 12px',
+                    borderRadius: '12px 12px 2px 12px',
+                    maxWidth: '85%',
+                    lineHeight: 1.5,
+                    wordBreak: 'break-word',
+                  }}>
+                    {h.question}
+                  </div>
+                </div>
+                {/* Answer bubble */}
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <div style={{
+                    background: Theme.colors.background || Theme.colors.cardBackground,
+                    border: `1px solid ${Theme.colors.cardBorder}`,
+                    color: h.answer === null ? Theme.colors.tertiaryText : Theme.colors.secondaryText,
+                    fontSize: '12px',
+                    padding: '8px 12px',
+                    borderRadius: '2px 12px 12px 12px',
+                    maxWidth: '90%',
+                    lineHeight: 1.6,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}>
+                    {h.answer === null ? (
+                      <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', fontStyle: 'italic' }}>Thinking</span>
+                        {[0, 1, 2].map(j => (
+                          <div key={j} style={{
+                            width: '4px', height: '4px', borderRadius: '50%',
+                            background: Theme.colors.tertiaryText,
+                            animation: `pulse 1.2s ease-in-out ${j * 0.2}s infinite`,
+                          }} />
+                        ))}
+                      </div>
+                    ) : h.answer}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            ))}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Input row */}
+          <div style={{
+            padding: '10px 12px',
+            borderTop: `1px solid ${Theme.colors.cardBorder}`,
+            display: 'flex',
+            gap: '8px',
+            alignItems: 'center',
+            flexShrink: 0,
+          }}>
+            <input
+              ref={inputRef}
+              type="text"
+              value={question}
+              onChange={e => setQuestion(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="Ask about your notes…"
+              style={{
+                flex: 1,
+                background: Theme.colors.inputBackground,
+                border: `1px solid ${Theme.colors.cardBorder}`,
+                borderRadius: Theme.radius.sm,
+                color: Theme.colors.primaryText,
+                padding: '7px 10px',
+                fontSize: '12px',
+                fontFamily: 'inherit',
+                outline: 'none',
+                transition: 'border-color 0.15s ease',
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
+              onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
+            />
+            <button
+              onClick={ask}
+              disabled={!question.trim()}
+              style={{
+                background: question.trim() ? Theme.colors.accentBlue : Theme.colors.cardBorder,
+                border: 'none',
+                borderRadius: Theme.radius.sm,
+                color: '#fff',
+                padding: '7px 12px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: question.trim() ? 'pointer' : 'default',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap',
+                transition: 'background 0.15s ease',
+              }}
+            >
+              Ask
+            </button>
+          </div>
         </div>
       )}
-
-      {/* Input */}
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-        <textarea
-          ref={inputRef}
-          value={question}
-          onChange={e => setQuestion(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="What was my NVDA thesis? Which setups repeated this week?..."
-          rows={2}
-          style={{
-            flex: 1,
-            background: Theme.colors.inputBackground,
-            border: `1px solid ${Theme.colors.cardBorder}`,
-            borderRadius: Theme.radius.sm,
-            color: Theme.colors.primaryText,
-            padding: '8px 12px',
-            fontSize: '12px',
-            fontFamily: 'inherit',
-            outline: 'none',
-            resize: 'none',
-            lineHeight: 1.5,
-            transition: 'border-color 0.15s ease',
-          }}
-          onFocus={e => e.currentTarget.style.borderColor = Theme.colors.borderActive}
-          onBlur={e => e.currentTarget.style.borderColor = Theme.colors.cardBorder}
-        />
-        <button
-          onClick={ask}
-          disabled={!question.trim() || loading}
-          style={{
-            background: question.trim() && !loading ? Theme.colors.accentBlue : Theme.colors.cardBorder,
-            border: 'none',
-            borderRadius: Theme.radius.sm,
-            color: '#fff',
-            padding: '8px 14px',
-            fontSize: '12px',
-            fontWeight: 700,
-            cursor: question.trim() && !loading ? 'pointer' : 'default',
-            fontFamily: 'inherit',
-            transition: 'all 0.15s ease',
-            whiteSpace: 'nowrap',
-            height: '100%',
-          }}
-        >
-          Ask
-        </button>
-      </div>
-      {history.length > 0 && (
-        <span
-          onClick={() => setHistory([])}
-          style={{ fontSize: '10px', color: Theme.colors.tertiaryText, cursor: 'pointer', marginTop: '6px', display: 'inline-block' }}
-        >
-          Clear
-        </span>
-      )}
-    </div>
+    </>
   );
 };
 
@@ -1678,6 +1880,9 @@ export const TradingNotesSection = ({ onTickerClick }) => {
           + New Note
         </button>
       )}
+
+      {/* Yesterday's tickers with live prices */}
+      <YesterdayWatchlist onTickerClick={onTickerClick} />
 
       {/* Summary from last 3-4 market days */}
       <BriefSection brief={brief} briefLoading={briefLoading} onTickerClick={onTickerClick} />

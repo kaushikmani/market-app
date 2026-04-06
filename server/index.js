@@ -159,9 +159,9 @@ app.get('/api/credentials/status', (req, res) => {
         level: getLevel(refreshMsLeft),
       },
     },
-    gemini: {
-      set: !!process.env.GEMINI_API_KEY,
-      level: process.env.GEMINI_API_KEY ? 'ok' : 'missing',
+    ollama: {
+      url: process.env.OLLAMA_URL || 'http://localhost:11434',
+      model: process.env.OLLAMA_MODEL || 'gemma4:e4b',
     },
   });
 });

@@ -188,4 +188,7 @@ export const ApiService = {
 
   getTradeIdeas: (force = false) =>
     fetchJson(`${API_BASE}/trade-ideas${force ? '?force=true' : ''}`),
+
+  getYesterdayWatchlist: () =>
+    fetchJson(`${API_BASE}/notes/yesterday-watchlist`),
 };

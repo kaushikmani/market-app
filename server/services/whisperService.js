@@ -2,8 +2,10 @@ import { exec, execSync } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
-import { GEMINI_API_KEY } from '../config.js';
 import { WATCHLIST } from '../data/watchlist.js';
+
+const OLLAMA_URL   = process.env.OLLAMA_URL   || 'http://localhost:11434';
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL  || 'gemma4:e4b';
 
 const execAsync = promisify(exec);
 
@@ -46,8 +48,6 @@ export function extractTickers(text) {
   return [...found].sort();
 }
 
-// GEMINI_API_KEY imported from config.js above
-
 const SUMMARY_PROMPT = `You are a trading analyst extracting actionable intelligence from trading notes for a trader's journal.
 
 Your job is to distill the content into detailed, actionable bullet points a trader can reference throughout the day.
@@ -73,83 +73,105 @@ Rules:
 Content:
 `;
 
-// Global rate limiter: max 12 requests/min (stays under free tier 15 RPM limit)
-const GEMINI_MIN_INTERVAL = 5000; // 5s between requests = 12/min
-let lastGeminiCall = 0;
-let geminiQueue = Promise.resolve();
-
-function enqueueGemini(fn) {
-  geminiQueue = geminiQueue.then(async () => {
-    const now = Date.now();
-    const wait = GEMINI_MIN_INTERVAL - (now - lastGeminiCall);
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    lastGeminiCall = Date.now();
-    return fn();
+async function _callOllama(prompt, numPredict = 8000) {
+  const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt,
+      stream: false,
+      options: { temperature: 0.3, num_predict: numPredict },
+    }),
   });
-  return geminiQueue;
-}
 
-async function _callGeminiOnce(prompt) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
-      }),
-    }
-  );
-
-  if (res.status === 429) return { rateLimited: true };
-  if (!res.ok) { console.error('[Gemini] API error:', res.status); return null; }
-
+  if (!res.ok) { console.error('[Ollama] API error:', res.status); return null; }
   const data = await res.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  return data?.response || null;
 }
 
-export async function callGemini(prompt, retries = 3) {
+// Serialise background calls so Ollama isn't flooded during startup scraping
+let ollamaQueue = Promise.resolve();
+function enqueueOllama(fn) {
+  ollamaQueue = ollamaQueue.then(fn);
+  return ollamaQueue;
+}
+
+export async function callGemini(prompt, retries = 3, numPredict = 8000) {
   for (let i = 0; i < retries; i++) {
     try {
-      const result = await enqueueGemini(() => _callGeminiOnce(prompt));
-      if (result && typeof result === 'object' && result.rateLimited) {
-        const wait = (i + 1) * 20000;
-        console.log(`[Gemini] Rate limited, retrying in ${wait / 1000}s...`);
-        await new Promise(r => setTimeout(r, wait));
-        continue;
-      }
-      return result;
+      const result = await enqueueOllama(() => _callOllama(prompt, numPredict));
+      if (result !== null) return result;
     } catch (error) {
-      console.error('[Gemini] Request failed:', error.message);
-      if (i < retries - 1) await new Promise(r => setTimeout(r, 5000));
+      console.error('[Ollama] Request failed:', error.message);
     }
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 3000));
   }
   return null;
 }
 
 /**
- * Direct Gemini call — bypasses the background queue.
- * Use for user-triggered requests (game plan, Q&A) so they aren't
- * blocked behind startup background scraper calls.
+ * Direct call — bypasses the background queue.
+ * Use for user-triggered requests (game plan, Q&A).
  */
-export async function callGeminiDirect(prompt, retries = 3) {
+export async function callGeminiDirect(prompt, retries = 3, numPredict = 8000) {
   for (let i = 0; i < retries; i++) {
     try {
-      const result = await _callGeminiOnce(prompt);
-      if (result && typeof result === 'object' && result.rateLimited) {
-        const wait = (i + 1) * 15000;
-        console.log(`[Gemini/direct] Rate limited, retrying in ${wait / 1000}s...`);
-        await new Promise(r => setTimeout(r, wait));
-        continue;
-      }
-      return result;
+      const result = await _callOllama(prompt, numPredict);
+      if (result !== null) return result;
     } catch (error) {
-      console.error('[Gemini/direct] Request failed:', error.message);
-      if (i < retries - 1) await new Promise(r => setTimeout(r, 3000));
+      console.error('[Ollama/direct] Request failed:', error.message);
     }
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 3000));
   }
   return null;
+}
+
+/**
+ * Streaming call — calls onToken for each token as it's generated.
+ * Returns the full accumulated text when done.
+ */
+export async function callGeminiStream(prompt, onToken, numPredict = 800) {
+  const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt,
+      stream: true,
+      options: { temperature: 0.3, num_predict: numPredict },
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Ollama API error: ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const obj = JSON.parse(line);
+        if (obj.response) {
+          fullText += obj.response;
+          onToken(obj.response);
+        }
+        if (obj.done) return fullText;
+      } catch { /* ignore partial JSON */ }
+    }
+  }
+
+  return fullText;
 }
 
 /**
