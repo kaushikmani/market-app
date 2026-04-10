@@ -29,11 +29,11 @@ export const WATCHLIST = [
   },
   {
     name: 'Optical/Photonics',
-    tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW'],
+    tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW', 'CLS'],
   },
   {
     name: 'AI Infrastructure & Hardware',
-    tickers: ['SMCI', 'VRT', 'DELL', 'HPE', 'CLS', 'SANM', 'FLEX', 'WYFI', 'AEHR', 'PLAB'],
+    tickers: ['SMCI', 'VRT', 'DELL', 'HPE', 'SANM', 'FLEX', 'WYFI', 'AEHR', 'PLAB'],
   },
   {
     name: 'Software & Cloud',
