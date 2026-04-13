@@ -20,7 +20,7 @@ export const WATCHLIST = [
   },
   {
     name: 'Chip Design & Processors',
-    tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'TSM', 'GFS'],
+    tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'TSM', 'TSEM', 'GFS'],
   },
   {
     name: 'Semiconductor Equipment',
@@ -32,7 +32,7 @@ export const WATCHLIST = [
   },
   {
     name: 'Optical/Photonics',
-    tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW', 'CLS'],
+    tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW', 'CLS', 'VIAV'],
   },
   {
     name: 'AI Infrastructure & Hardware',

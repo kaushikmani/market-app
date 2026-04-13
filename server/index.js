@@ -29,7 +29,7 @@ import { callGeminiDirect } from './services/whisperService.js';
 import notesRouter, { generateNotesSummary } from './routes/notes.js';
 import journalRouter from './routes/journal.js';
 import { WATCHLIST } from './data/watchlist.js';
-import { getQuotes, getMarketStatus as schwabMarketStatus, getOptionsChain } from './services/schwab.js';
+import { getQuotes, getMarketStatus as schwabMarketStatus, getOptionsChain, getInstrumentFundamentals } from './services/schwab.js';
 import { fetchEarningsHistory } from './scrapers/earningsHistory.js';
 
 const app = express();
@@ -926,8 +926,12 @@ app.get('/api/ticker-info', async (req, res) => {
   const tickerErr = validateTicker(ticker);
   if (tickerErr) return res.status(400).json({ error: tickerErr });
   try {
-    const quotes = await getQuotes([ticker.toUpperCase()]);
-    const q = quotes[ticker.toUpperCase()] || {};
+    const upper = ticker.toUpperCase();
+    const [quotes, fundamentals] = await Promise.all([
+      getQuotes([upper]),
+      getInstrumentFundamentals(upper).catch(() => ({})),
+    ]);
+    const q = quotes[upper] || {};
     res.json({
       price:     q.price,
       change:    q.change,
@@ -935,6 +939,8 @@ app.get('/api/ticker-info', async (req, res) => {
       volume:    q.volume,
       high52w:   q.high52w,
       low52w:    q.low52w,
+      marketCap:         fundamentals.marketCap         ?? null,
+      sharesOutstanding: fundamentals.sharesOutstanding ?? null,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

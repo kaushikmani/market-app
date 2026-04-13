@@ -38,6 +38,12 @@ const MetricCard = ({ title, value, subtitle, accentColor }) => (
 );
 
 export const VolatilityMetrics = ({ metrics }) => {
+    const atrSign = metrics.atrFromFifty >= 0 ? '+' : '';
+    const atrColor = metrics.atrFromFifty >= 0 ? Theme.colors.bullishGreen : Theme.colors.bearishRed;
+
+    const pctSign = metrics.percentFromFiftySMA >= 0 ? '+' : '';
+    const pctColor = metrics.percentFromFiftySMA >= 0 ? Theme.colors.bullishGreen : Theme.colors.bearishRed;
+
     return (
         <div className="flex gap-3">
             <MetricCard
@@ -48,15 +54,15 @@ export const VolatilityMetrics = ({ metrics }) => {
             />
             <MetricCard
                 title="ATR from 50"
-                value={`+${metrics.atrFromFifty.toFixed(2)}`}
+                value={`${atrSign}${metrics.atrFromFifty.toFixed(2)}`}
                 subtitle="ATR Multiple"
-                accentColor={Theme.colors.accentPurple}
+                accentColor={atrColor}
             />
             <MetricCard
                 title="% from 50"
-                value={`+${metrics.percentFromFiftySMA.toFixed(2)}%`}
+                value={`${pctSign}${metrics.percentFromFiftySMA.toFixed(2)}%`}
                 subtitle="From 50 SMA"
-                accentColor={Theme.colors.bullishGreen}
+                accentColor={pctColor}
             />
         </div>
     );

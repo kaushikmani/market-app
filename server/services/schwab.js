@@ -105,9 +105,12 @@ export async function schwabGet(path, params = {}) {
 
 // ── Quotes: fetch multiple tickers in one call ────────────────────────────────
 // Returns { AAPL: { price, changePct, change, bid, ask, volume, open, prevClose,
-//                   high52w, low52w, preMarketChangePct, postMarketChangePct }, ... }
+//                   high52w, low52w, preMarketChangePct, postMarketChangePct,
+//                   marketCap (if fields includes 'fundamental') }, ... }
+//
+// fields: comma-separated Schwab fields string, e.g. 'quote' or 'quote,fundamental'
 
-export async function getQuotes(tickers) {
+export async function getQuotes(tickers, fields = 'quote') {
   if (!tickers?.length) return {};
 
   // Schwab allows up to 500 symbols per call
@@ -116,9 +119,10 @@ export async function getQuotes(tickers) {
 
   const results = {};
   await Promise.all(chunks.map(async (chunk) => {
-    const data = await schwabGet('/quotes', { symbols: chunk.join(','), fields: 'quote' });
+    const data = await schwabGet('/quotes', { symbols: chunk.join(','), fields });
     for (const [symbol, info] of Object.entries(data || {})) {
       const q = info.quote || {};
+      const f = info.fundamental || {};
       results[symbol] = {
         price:               q.lastPrice                  ?? q.regularMarketLastPrice ?? null,
         changePct:           q.netPercentChange            ?? null,
@@ -134,11 +138,35 @@ export async function getQuotes(tickers) {
         preMarketChange:     q.preMarketChange             ?? null,
         preMarketChangePct:  q.preMarketPercentChange      ?? null,
         postMarketChangePct: q.postMarketPercentChange     ?? null,
+        // Fundamental fields (populated when fields includes 'fundamental')
+        marketCap:           f.marketCap                   ?? null, // in millions USD
       };
     }
   }));
 
   return results;
+}
+
+// ── Instrument fundamentals: market cap, PE, EPS, etc ────────────────────────
+// Returns { marketCap, peRatio, eps, high52, low52, dividendYield } for one ticker
+// marketCap is in millions USD per Schwab convention
+
+export async function getInstrumentFundamentals(ticker) {
+  const data = await schwabGet('/instruments', { symbol: ticker.toUpperCase(), projection: 'fundamental' });
+  // Schwab returns { instruments: [...] }
+  const items = data?.instruments ?? (Array.isArray(data) ? data : Object.values(data || {}));
+  const item = items.find(i => i.symbol?.toUpperCase() === ticker.toUpperCase()) || items[0];
+  if (!item) return {};
+  const f = item.fundamental || {};
+  return {
+    marketCap:        f.marketCap        ?? null, // full dollars
+    sharesOutstanding: f.sharesOutstanding ?? null, // raw share count
+    peRatio:          f.peRatio          ?? null,
+    eps:              f.eps              ?? null,
+    high52:           f.high52           ?? null,
+    low52:            f.low52            ?? null,
+    dividendYield:    f.dividendYield    ?? null,
+  };
 }
 
 // ── Price history: daily candles ──────────────────────────────────────────────

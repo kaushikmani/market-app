@@ -87,7 +87,9 @@ function buildStockFromTickerInfo(tickerInfo, smaData) {
   const indicators = new TechnicalIndicators(rsi, bb, macd);
 
   const pctFrom50 = sma50pct || 0;
-  const volatility = new VolatilityMetricsModel(0, 0, pctFrom50);
+  const adr = smaData?.adr ?? 0;
+  const atrFromFifty = smaData?.atrFromFifty ?? 0;
+  const volatility = new VolatilityMetricsModel(adr, atrFromFifty, pctFrom50);
 
   const movingAverages = [];
   if (smaData?.success && smaData.smas) {

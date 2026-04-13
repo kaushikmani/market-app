@@ -1,6 +1,22 @@
 import React from 'react';
 import { Theme } from '../models/Theme';
 
+// marketCap from Schwab instruments API is in full dollars
+function formatMarketCap(cap) {
+  if (!cap || cap <= 0) return null;
+  if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
+  if (cap >= 1e9)  return `$${(cap / 1e9).toFixed(2)}B`;
+  if (cap >= 1e6)  return `$${(cap / 1e6).toFixed(0)}M`;
+  return null;
+}
+
+function formatShares(shares) {
+  if (!shares || shares <= 0) return null;
+  if (shares >= 1e9) return `${(shares / 1e9).toFixed(2)}B`;
+  if (shares >= 1e6) return `${(shares / 1e6).toFixed(0)}M`;
+  return shares.toLocaleString();
+}
+
 const LoadingSkeleton = () => (
   <div className="flex flex-col gap-3">
     <div className="flex items-center gap-3">
@@ -82,16 +98,23 @@ export const StockOverviewSection = ({ data, loading, error }) => {
             {changeDisplay} ({changePctDisplay})
           </span>
         )}
-        {data.volume && (
-          <span style={{
-            fontSize: '12px',
-            fontWeight: 600,
-            color: Theme.colors.tertiaryText,
-            marginLeft: 'auto',
-          }}>
-            Vol: {typeof data.volume === 'number' ? data.volume.toLocaleString() : data.volume}
-          </span>
-        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+          {formatMarketCap(data.marketCap) && (
+            <span style={{ fontSize: '12px', fontWeight: 700, color: Theme.colors.secondaryText }}>
+              {formatMarketCap(data.marketCap)}
+            </span>
+          )}
+          {formatShares(data.sharesOutstanding) && (
+            <span style={{ fontSize: '11px', fontWeight: 500, color: Theme.colors.tertiaryText }}>
+              {formatShares(data.sharesOutstanding)} shares
+            </span>
+          )}
+          {data.volume && (
+            <span style={{ fontSize: '11px', fontWeight: 500, color: Theme.colors.tertiaryText }}>
+              Vol: {typeof data.volume === 'number' ? data.volume.toLocaleString() : data.volume}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 52W Range card */}

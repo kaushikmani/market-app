@@ -6,6 +6,38 @@ function calcSMA(closes, period) {
   return slice.reduce((a, b) => a + b, 0) / period;
 }
 
+// Average Daily Range % = avg of (high - low) / midpoint * 100 over last N candles
+function calcADR(candles, period = 20) {
+  // candles sorted oldest → newest
+  const slice = candles.slice(-period);
+  if (slice.length < period) return null;
+  const ranges = slice.map(c => ((c.h - c.l) / ((c.h + c.l) / 2)) * 100);
+  const avg = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+  return Math.round(avg * 100) / 100;
+}
+
+// Average True Range using Wilder's smoothing
+function calcATR(candles, period = 14) {
+  // candles sorted oldest → newest
+  if (candles.length < period + 1) return null;
+  const trValues = [];
+  for (let i = 1; i < candles.length; i++) {
+    const curr = candles[i];
+    const prev = candles[i - 1];
+    trValues.push(Math.max(
+      curr.h - curr.l,
+      Math.abs(curr.h - prev.c),
+      Math.abs(curr.l - prev.c)
+    ));
+  }
+  if (trValues.length < period) return null;
+  let atr = trValues.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < trValues.length; i++) {
+    atr = (atr * (period - 1) + trValues[i]) / period;
+  }
+  return Math.round(atr * 100) / 100;
+}
+
 function calcRSI(closes, period = 14) {
   const prices = [...closes].reverse(); // chronological
   if (prices.length < period + 1) return null;
@@ -113,13 +145,23 @@ export async function fetchSMAs(ticker) {
         volume: r.v || 0,
       }));
 
+    const adr = calcADR(results);
+    const atr14 = calcATR(results);
+    const sma50value = smas[50]?.value ?? null;
+    const atrFromFifty = (atr14 && sma50value && atr14 > 0)
+      ? Math.round(((currentPrice - sma50value) / atr14) * 100) / 100
+      : null;
+
     return {
-      ticker:  ticker.toUpperCase(),
-      price:   Math.round(currentPrice * 100) / 100,
+      ticker:       ticker.toUpperCase(),
+      price:        Math.round(currentPrice * 100) / 100,
       smas,
-      rsi:     calcRSI(recent, 14),
+      rsi:          calcRSI(recent, 14),
       candles,
-      success: true,
+      adr,
+      atr14,
+      atrFromFifty,
+      success:      true,
     };
   } catch (error) {
     return { ticker: ticker.toUpperCase(), smas: {}, rsi: null, candles: [], success: false, error: error.message };
