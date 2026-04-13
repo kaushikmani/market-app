@@ -107,6 +107,15 @@ export function useMarketData(ticker, enabled = false) {
       .then(data => { if (mountedRef.current) setWatchlistScan(data); })
       .catch(err => { if (mountedRef.current) setErrors(e => ({ ...e, watchlistScan: err.message })); })
       .finally(() => { if (mountedRef.current) setLoadingScan(false); });
+
+    // Poll every 5 minutes to pick up background refreshes
+    const interval = setInterval(() => {
+      if (!mountedRef.current) return;
+      ApiService.getWatchlistScan()
+        .then(data => { if (mountedRef.current) setWatchlistScan(data); })
+        .catch(() => {});
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {

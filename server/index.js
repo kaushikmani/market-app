@@ -524,21 +524,45 @@ app.get('/api/pre-market-movers', async (req, res) => {
 });
 
 // Watchlist scanner with 15-minute cache (disk-backed for instant cold-start)
-let scanCache = { data: loadDiskCache('watchlist-scan'), expiry: Date.now() + 14 * 60 * 1000 };
+// Use scannedAt from disk to compute proper initial expiry — avoids treating 8h-old data as fresh
+const _diskScan = loadDiskCache('watchlist-scan');
+const _diskScanAge = _diskScan?.scannedAt ? Date.now() - new Date(_diskScan.scannedAt).getTime() : Infinity;
+const _scanInitExpiry = _diskScanAge < 15 * 60 * 1000 ? Date.now() + (15 * 60 * 1000 - _diskScanAge) : 0;
+let scanCache = { data: _diskScan, expiry: _scanInitExpiry };
+let scanRefreshInProgress = false;
 
 app.get('/api/watchlist-scan', async (req, res) => {
   try {
     const now = Date.now();
-    if (scanCache.data && now < scanCache.expiry) {
-      return res.json(scanCache.data);
+    const isStale = now >= scanCache.expiry;
+
+    // Always respond immediately with whatever we have (stale-while-revalidate)
+    if (scanCache.data) {
+      res.json(scanCache.data);
+      // Kick off background refresh if stale and not already running
+      if (isStale && !scanRefreshInProgress) {
+        scanRefreshInProgress = true;
+        scanWatchlist()
+          .then(data => {
+            scanCache = { data, expiry: Date.now() + 15 * 60 * 1000 };
+            if (data?.results?.length > 0) saveDiskCache('watchlist-scan', data);
+          })
+          .catch(e => console.error('[ScanCache] Background refresh failed:', e.message))
+          .finally(() => { scanRefreshInProgress = false; });
+      }
+      return;
     }
 
+    // No disk cache at all — must wait for first scan
+    scanRefreshInProgress = true;
     const data = await scanWatchlist();
     scanCache = { data, expiry: now + 15 * 60 * 1000 };
     if (data?.results?.length > 0) saveDiskCache('watchlist-scan', data);
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  } finally {
+    scanRefreshInProgress = false;
   }
 });
 
