@@ -36,7 +36,7 @@ export const WATCHLIST = [
   },
   {
     name: 'AI Infrastructure & Hardware',
-    tickers: ['SMCI', 'VRT', 'DELL', 'HPE', 'SANM', 'FLEX', 'WYFI', 'AEHR', 'PLAB'],
+    tickers: ['SMCI', 'VRT', 'DELL', 'HPE', 'SANM', 'FLEX', 'JBL', 'WYFI', 'AEHR', 'PLAB'],
   },
   {
     name: 'Software & Cloud',

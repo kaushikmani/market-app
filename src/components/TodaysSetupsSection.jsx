@@ -313,7 +313,7 @@ function SetupCard({ stock, onTickerClick }) {
             fontWeight: 600,
             color: Theme.colors.secondaryText,
           }}>
-            ${stock.price.toFixed(2)}
+            {stock.price != null ? `$${stock.price.toFixed(2)}` : '—'}
           </span>
         </div>
         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>

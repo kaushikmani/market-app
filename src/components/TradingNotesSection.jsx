@@ -629,10 +629,10 @@ const YesterdayWatchlist = ({ onTickerClick }) => {
               }}
             >
               <div style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.primaryText }}>{ticker}</div>
-              {price !== null && (
+              {price != null && (
                 <div style={{ fontSize: '10px', color: Theme.colors.secondaryText }}>${price.toFixed(2)}</div>
               )}
-              {changePct !== null && (
+              {changePct != null && (
                 <div style={{ fontSize: '10px', fontWeight: 600, color: changeColor }}>
                   {changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%
                 </div>

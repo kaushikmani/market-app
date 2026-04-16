@@ -812,7 +812,6 @@ export async function scanWatchlist() {
     scanned,
     errors,
     flagged: results.length,
-    earningsFiltered,
     noteSetups: noteSetupsCount,
     results: topResults,
   };
