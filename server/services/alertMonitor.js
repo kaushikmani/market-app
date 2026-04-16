@@ -1,7 +1,16 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
 import { getQuotes, getPriceHistory } from './schwab.js';
+
+const WA_CHAT = '16149062942@s.whatsapp.net';
+function sendWhatsApp(text) {
+  const escaped = text.replace(/'/g, "'\\''");
+  exec(`wacli messages send --to ${WA_CHAT} --text '${escaped}'`, (err) => {
+    if (err) console.error('[Alerts] WhatsApp send failed:', err.message);
+  });
+}
 
 const __dirname   = path.dirname(fileURLToPath(import.meta.url));
 const ALERTS_FILE = path.join(__dirname, '../data/alerts.json');
@@ -33,7 +42,7 @@ async function fetchQuote(ticker) {
     if (closes.length < 50) return null;
 
     const smas = {};
-    for (const period of [20, 50, 100, 200]) {
+    for (const period of [8, 20, 50, 100, 200]) {
       if (closes.length >= period) {
         smas[period] = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
       }
@@ -138,6 +147,7 @@ export async function runAlertCheck() {
       if (result?.triggered) {
         console.log(`[Alerts] Triggered: ${result.message}`);
         state[id] = { lastSent: Date.now(), lastPrice: quote.price };
+        sendWhatsApp(result.message);
         // Push to notification queue (cap at 20)
         recentTriggers.push({ id: crypto.randomUUID(), alertId: id, ticker: alert.ticker, message: result.message, ts: Date.now() });
         if (recentTriggers.length > 20) recentTriggers.shift();
