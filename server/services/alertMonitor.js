@@ -4,11 +4,11 @@ import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { getQuotes, getPriceHistory } from './schwab.js';
 
-const WA_CHAT = '16149062942@s.whatsapp.net';
-function sendWhatsApp(text) {
-  const escaped = text.replace(/'/g, "'\\''");
-  exec(`wacli messages send --to ${WA_CHAT} --text '${escaped}'`, (err) => {
-    if (err) console.error('[Alerts] WhatsApp send failed:', err.message);
+function sendNotification(title, message) {
+  const t = title.replace(/'/g, "'\\''");
+  const m = message.replace(/'/g, "'\\''");
+  exec(`osascript -e 'display notification "${m}" with title "${t}" sound name "Ping"'`, (err) => {
+    if (err) console.error('[Alerts] Notification failed:', err.message);
   });
 }
 
@@ -147,7 +147,7 @@ export async function runAlertCheck() {
       if (result?.triggered) {
         console.log(`[Alerts] Triggered: ${result.message}`);
         state[id] = { lastSent: Date.now(), lastPrice: quote.price };
-        sendWhatsApp(result.message);
+        sendNotification('Price Alert', result.message);
         // Push to notification queue (cap at 20)
         recentTriggers.push({ id: crypto.randomUUID(), alertId: id, ticker: alert.ticker, message: result.message, ts: Date.now() });
         if (recentTriggers.length > 20) recentTriggers.shift();
