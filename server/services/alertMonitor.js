@@ -5,9 +5,9 @@ import { exec } from 'child_process';
 import { getQuotes, getPriceHistory } from './schwab.js';
 
 function sendNotification(title, message) {
-  const t = title.replace(/'/g, "'\\''");
-  const m = message.replace(/'/g, "'\\''");
-  exec(`osascript -e 'display notification "${m}" with title "${t}" sound name "Ping"'`, (err) => {
+  const t = title.replace(/"/g, '\\"');
+  const m = message.replace(/"/g, '\\"');
+  exec(`terminal-notifier -title "${t}" -message "${m}" -sound default -ignoreDnD`, (err) => {
     if (err) console.error('[Alerts] Notification failed:', err.message);
   });
 }
