@@ -1,56 +1,72 @@
+// Tape design system — warm near-black + signal-amber.
+// Hex equivalents of the Tape OKLCH palette so JS color parsers
+// (lightweight-charts, etc.) can read these values.
+
+const ACC      = '#9fb0ff';
+const ACC_DIM  = 'rgba(159, 176, 255, 0.12)';
+const ACC_LINE = 'rgba(159, 176, 255, 0.30)';
+
+const UP       = '#56d57b';
+const UP_DIM   = 'rgba(86, 213, 123, 0.12)';
+const UP_LINE  = 'rgba(86, 213, 123, 0.28)';
+
+const DOWN     = '#fc5855';
+const DOWN_DIM = 'rgba(252, 88, 85, 0.12)';
+const DOWN_LINE= 'rgba(252, 88, 85, 0.28)';
+
 export const Theme = {
     colors: {
         // Surfaces
-        appBackground: '#06060b',
-        cardBackground: '#0e0e16',
-        cardBackgroundHover: '#14141e',
-        cardElevated: '#121220',
-        inputBackground: '#0a0a12',
-        sidebarBackground: '#0a0a12',
-        surfaceSubtle: 'rgba(255,255,255,0.02)',
+        appBackground:       '#0a0908',
+        cardBackground:      '#161312',
+        cardBackgroundHover: '#1d1a18',
+        cardElevated:        '#181614',
+        inputBackground:     '#070505',
+        sidebarBackground:   '#080706',
+        surfaceSubtle:       'rgba(255, 255, 255, 0.02)',
 
         // Borders
-        cardBorder: 'rgba(255,255,255,0.06)',
-        cardBorderHover: 'rgba(255,255,255,0.10)',
-        borderActive: 'rgba(108, 138, 255, 0.3)',
-        borderSubtle: 'rgba(255,255,255,0.03)',
+        cardBorder:        '#2b2826',
+        cardBorderHover:   '#403c39',
+        borderActive:      ACC_LINE,
+        borderSubtle:      '#1c1a18',
 
         // Text
-        primaryText: '#f0f0f5',
-        secondaryText: '#6e6e88',
-        tertiaryText: '#404058',
-        mutedText: '#2e2e42',
+        primaryText:   '#f3f1ee',
+        secondaryText: '#a7a4a1',
+        tertiaryText:  '#6b6865',
+        mutedText:     '#45423f',
 
         // Signals
-        bullishGreen: '#00d68f',
-        bullishGreenBg: 'rgba(0, 214, 143, 0.10)',
-        bullishGreenBorder: 'rgba(0, 214, 143, 0.18)',
-        bearishRed: '#ff5c5c',
-        bearishRedBg: 'rgba(255, 92, 92, 0.10)',
-        bearishRedBorder: 'rgba(255, 92, 92, 0.18)',
-        neutralGray: '#6e6e88',
+        bullishGreen:       UP,
+        bullishGreenBg:     UP_DIM,
+        bullishGreenBorder: UP_LINE,
+        bearishRed:         DOWN,
+        bearishRedBg:       DOWN_DIM,
+        bearishRedBorder:   DOWN_LINE,
+        neutralGray:        '#a7a4a1',
 
-        // Accents
-        accentBlue: '#6c8aff',
-        accentBlueDim: 'rgba(108, 138, 255, 0.10)',
-        accentBlueBorder: 'rgba(108, 138, 255, 0.20)',
-        accentPurple: '#a78bfa',
-        accentPurpleDim: 'rgba(167, 139, 250, 0.10)',
-        accentAmber: '#f5a623',
-        accentAmberDim: 'rgba(245, 166, 35, 0.10)',
-        cyan: '#22d3ee',
+        // Accents — every primary action is amber
+        accentBlue:        ACC,
+        accentBlueDim:     ACC_DIM,
+        accentBlueBorder:  ACC_LINE,
+        accentPurple:      ACC,
+        accentPurpleDim:   ACC_DIM,
+        accentAmber:       ACC,
+        accentAmberDim:    ACC_DIM,
+        cyan:              '#5ec5d9',
 
         // Tabs
-        tabSelected: '#f0f0f5',
-        tabUnselected: '#404058',
+        tabSelected:   '#f3f1ee',
+        tabUnselected: '#6b6865',
     },
 
     shadows: {
         sm: '0 1px 2px rgba(0,0,0,0.4)',
         md: '0 4px 16px rgba(0,0,0,0.5)',
         lg: '0 8px 32px rgba(0,0,0,0.6)',
-        glowBlue: '0 0 24px rgba(108, 138, 255, 0.08)',
-        glowGreen: '0 0 20px rgba(0, 214, 143, 0.08)',
+        glowBlue:  '0 0 24px rgba(159, 176, 255, 0.12)',
+        glowGreen: '0 0 20px rgba(86, 213, 123, 0.10)',
     },
 
     radius: {

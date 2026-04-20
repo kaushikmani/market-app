@@ -137,6 +137,34 @@ const COACHING_SESSIONS = [
       'Many pros combine both: swing trade a core account for larger gains, scalp for daily cash flow — but master one style first',
     ],
   },
+  {
+    id: 'session-9',
+    session: 9,
+    date: 'Apr 1, 2026',
+    title: 'Session 9 — When to Use P/E (and When Not To)',
+    videoUrl: null,
+    videoType: 'zoom',
+    duration: null,
+    summary: 'When the price-to-earnings ratio is a useful filter for trade decisions and when it actively misleads. Replay link delivered Apr 2 — detailed notes pending after rewatch.',
+    keyTakeaways: [
+      'Topic focus: when to use P/E and when not to + a how-to follow-on segment',
+      'Replay link arrived in Gmail (info@t3live.com, Apr 2 2026) — fill in specifics after watching',
+    ],
+  },
+  {
+    id: 'session-10',
+    session: 10,
+    date: 'Apr 15, 2026',
+    title: 'Session 10 — Trading + Emotion',
+    videoUrl: null,
+    videoType: 'zoom',
+    duration: null,
+    summary: 'Managing emotion in active trading — the gap between knowing the rules and following them when capital is on the line. Replay link delivered Apr 15 — detailed notes pending after rewatch.',
+    keyTakeaways: [
+      'Topic focus: trading psychology and the emotional component of execution',
+      'Replay link arrived in Gmail (info@t3live.com, Apr 15 2026) — fill in specifics after watching',
+    ],
+  },
 ];
 
 const THEMES = [

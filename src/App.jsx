@@ -31,9 +31,16 @@ import { MarketSentimentSection } from './components/MarketSentimentSection';
 import { AlertsPanel } from './components/AlertsPanel';
 import { CredentialsStatus } from './components/CredentialsStatus';
 import { JournalSection } from './components/JournalSection';
+import { RightRail } from './components/RightRail';
+import { OverviewHero } from './components/OverviewHero';
+import { AlertWatchSection } from './components/AlertWatchSection';
+import { TradeLogHero } from './components/TradeLogHero';
+import { OutlookHero } from './components/OutlookHero';
+import { StockHero } from './components/StockHero';
 import { AlertToast } from './components/AlertToast';
 import { ApiService } from './services/ApiService';
 import { useMarketData } from './hooks/useMarketData';
+import { useWatchlistPrices } from './hooks/useWatchlistPrices';
 import { Theme } from './models/Theme';
 import {
   PriceData,
@@ -50,10 +57,53 @@ import {
 const TABS = [
   { key: 'market', label: 'Overview' },
   { key: 'stock', label: 'Stocks' },
-  { key: 'journal', label: 'Journal' },
-  { key: 'notes', label: 'Notes' },
+  { key: 'trades', label: 'Trade Log' },
+  { key: 'journal', label: 'Notes' },
   { key: 'outlook', label: 'Outlook' },
 ];
+
+const TODAY_STR = new Date()
+  .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  .toUpperCase()
+  .replace(/,/g, ' ·');
+
+function TickerTape({ items }) {
+  if (!items || items.length === 0) return null;
+  const doubled = [...items, ...items];
+  return (
+    <div style={{
+      borderBottom: '1px solid var(--border-default)',
+      background: 'var(--bg-input)',
+      overflow: 'hidden',
+      height: 30,
+      display: 'flex',
+      alignItems: 'center',
+    }}>
+      <div className="tape-strip">
+        {doubled.map((t, i) => {
+          const up = (t.changePct ?? t.pct ?? 0) >= 0;
+          const sym = t.symbol || t.ticker || t.sym;
+          const price = t.price ?? t.last ?? 0;
+          const pct = t.changePct ?? t.pct ?? 0;
+          return (
+            <span key={`${sym}-${i}`} className="mono-tape" style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 11,
+            }}>
+              <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{sym}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{Number(price).toFixed(2)}</span>
+              <span style={{ color: up ? 'var(--green)' : 'var(--red)' }}>
+                {up ? '▲' : '▼'} {Math.abs(pct).toFixed(2)}%
+              </span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function parseNum(str) {
   if (!str) return null;
@@ -103,15 +153,34 @@ function buildStockFromTickerInfo(tickerInfo, smaData) {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('activeTab') || 'market');
+  const [activeTab, setActiveTab] = useState(() => {
+    const stored = localStorage.getItem('activeTab') || 'market';
+    if (stored === 'notes') return 'journal';
+    if (stored === 'journal') return 'trades';
+    return stored;
+  });
   const [ticker, setTicker] = useState(() => localStorage.getItem('lastTicker') || 'AAPL');
   const [tickerInput, setTickerInput] = useState(() => localStorage.getItem('lastTicker') || 'AAPL');
   const [chartModalTicker, setChartModalTicker] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  const [isWide, setIsWide] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1280);
   const stockZoneRef = useRef(null);
 
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1280);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const { news, stockNews, tickerInfo, smaData, marketBriefing, watchlistScan, loadingBriefing, loadingScan, loadingMarketNews, loading, loadingNews, errors } = useMarketData(ticker, activeTab === 'stock');
+  const { prices: tapePrices } = useWatchlistPrices();
+  const tapeItems = useMemo(() => {
+    return Object.entries(tapePrices || {})
+      .filter(([, v]) => v && typeof v.price === 'number')
+      .slice(0, 30)
+      .map(([sym, v]) => ({ sym, price: v.price, pct: v.changePct ?? 0 }));
+  }, [tapePrices]);
 
   const stock = useMemo(() => buildStockFromTickerInfo(tickerInfo, smaData), [tickerInfo, smaData]);
 
@@ -223,47 +292,110 @@ function App() {
         minHeight: '100vh',
         paddingBottom: '60px',
       }}>
-        {/* Tab navigation */}
-        <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="flex items-center gap-1" style={{
-            background: Theme.colors.cardBackground,
-            borderRadius: Theme.radius.md,
-            padding: '3px',
-            border: `1px solid ${Theme.colors.cardBorder}`,
-            display: 'inline-flex',
-          }}>
+        {/* Tape top bar — sticky, flat tabs with underline indicator */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '0 20px',
+          height: 56,
+          borderBottom: '1px solid var(--border-default)',
+          background: 'var(--bg-app)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+        }}>
+          {/* Brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 4 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="2" y="2" width="20" height="20" rx="5" stroke="var(--tape-acc)" strokeWidth="1.5"/>
+              <path d="M6 15 L10 10 L13 13 L18 7" stroke="var(--tape-acc)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="18" cy="7" r="1.5" fill="var(--tape-acc)"/>
+            </svg>
+            <span className="serif" style={{ fontSize: 17, fontStyle: 'italic', lineHeight: 1, color: 'var(--text-primary)' }}>
+              Tape
+            </span>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', gap: 0, marginLeft: 4 }}>
             {TABS.map(tab => {
               const isActive = activeTab === tab.key;
               return (
-                <div
+                <button
                   key={tab.key}
                   onClick={() => handleTabChange(tab.key)}
                   style={{
-                    padding: '7px 20px',
-                    fontSize: '12px',
-                    fontWeight: isActive ? 700 : 500,
-                    color: isActive ? '#fff' : Theme.colors.secondaryText,
-                    background: isActive ? Theme.colors.accentBlue : 'transparent',
-                    borderRadius: '8px',
+                    position: 'relative',
+                    padding: '0 16px',
+                    height: 56,
+                    fontSize: 12.5,
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    letterSpacing: '-0.005em',
+                    background: 'transparent',
+                    border: 0,
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    letterSpacing: '0.03em',
-                    userSelect: 'none',
+                    fontFamily: 'inherit',
+                    transition: 'color 0.15s var(--tape-e)',
                   }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = 'var(--text-primary)'; }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'; }}
                 >
                   {tab.label}
-                </div>
+                  {isActive && (
+                    <span style={{
+                      position: 'absolute',
+                      left: 12,
+                      right: 12,
+                      bottom: 0,
+                      height: 2,
+                      background: 'var(--tape-acc)',
+                      borderRadius: 1,
+                    }}/>
+                  )}
+                </button>
               );
             })}
           </div>
+
+          <div style={{ flex: 1 }} />
+
+          {/* Date */}
+          <div className="mono-tape" style={{ fontSize: 11, color: 'var(--text-secondary)', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+            {TODAY_STR}
+          </div>
+          <div style={{ width: 1, height: 20, background: 'var(--border-default)' }} />
+
+          {/* ⌘K */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid var(--border-default)', borderRadius: 6, background: 'var(--bg-card)' }} title="Command palette (coming soon)">
+            <kbd className="tape-kbd" style={{ border: 0, padding: 0, background: 'transparent' }}>⌘</kbd>
+            <kbd className="tape-kbd" style={{ border: 0, padding: 0, background: 'transparent' }}>K</kbd>
+          </div>
+
+          {/* API Live status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', border: '1px solid var(--border-default)', borderRadius: 6, background: 'var(--bg-card)' }}>
+            <span className="tape-dot up tape-pulse" />
+            <span style={{ fontSize: 11, color: 'var(--text-primary)' }}>API · Live</span>
+          </div>
+
           <CredentialsStatus />
         </div>
+
+        {/* Ticker tape */}
+        <TickerTape items={tapeItems} />
 
         {/* ═══════════════════════════════════ */}
         {/* MARKET TAB                          */}
         {/* ═══════════════════════════════════ */}
         {activeTab === 'market' && (
           <div style={{ padding: '0 20px' }}>
+
+            {/* ── Tape editorial hero ── */}
+            <OverviewHero onPick={handleTickerClick} />
+
+            {/* ── Alert watch — live distance to SMA for every active alert ── */}
+            <AlertWatchSection onTickerClick={handleTickerClick} />
 
             {/* ── 0. Trading Rules — read every morning ── */}
             <div style={{ paddingTop: '20px' }}>
@@ -429,6 +561,9 @@ function App() {
               </form>
             </div>
 
+            {/* Tape editorial hero */}
+            <StockHero ticker={ticker} tickerInfo={tickerInfo} smaData={smaData} />
+
             {/* Stock content */}
             <div className="flex flex-col gap-5">
               <StockOverviewSection data={tickerInfo} loading={loading} error={errors.tickerInfo} />
@@ -498,7 +633,7 @@ function App() {
                   <SectionDivider title="Journal" />
                   <StockNotesSection
                     ticker={ticker}
-                    onOpenJournal={() => handleTabChange('notes')}
+                    onOpenJournal={() => handleTabChange('journal')}
                   />
                 </>
               )}
@@ -511,18 +646,19 @@ function App() {
         )}
 
         {/* ═══════════════════════════════════ */}
-        {/* JOURNAL TAB                         */}
+        {/* TRADE LOG TAB                       */}
         {/* ═══════════════════════════════════ */}
-        {activeTab === 'journal' && (
+        {activeTab === 'trades' && (
           <div style={{ padding: '0 20px' }}>
+            <TradeLogHero />
             <JournalSection />
           </div>
         )}
 
         {/* ═══════════════════════════════════ */}
-        {/* NOTES TAB                           */}
+        {/* JOURNAL TAB                         */}
         {/* ═══════════════════════════════════ */}
-        {activeTab === 'notes' && (
+        {activeTab === 'journal' && (
           <div style={{ padding: '20px 20px 0' }}>
             <TradingNotesSection onTickerClick={handleTickerClick} />
           </div>
@@ -532,11 +668,14 @@ function App() {
         {/* OUTLOOK TAB                         */}
         {/* ═══════════════════════════════════ */}
         {activeTab === 'outlook' && (
-          <div style={{ padding: '20px 20px 0' }}>
+          <div style={{ padding: '0 20px' }}>
+            <OutlookHero />
             <OutlookSection onTickerClick={handleTickerClick} />
           </div>
         )}
       </div>
+
+      {isWide && <RightRail onPick={handleTickerClick} />}
     </div>
   );
 }

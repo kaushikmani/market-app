@@ -1,49 +1,85 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap');
 
 :root {
-  /* ─── Surfaces ─── */
-  --bg-app: #06060b;
-  --bg-card: #0e0e16;
-  --bg-card-hover: #14141e;
-  --bg-card-elevated: #121220;
-  --bg-input: #0a0a12;
-  --bg-sidebar: #0a0a12;
-  --bg-surface-subtle: rgba(255,255,255,0.02);
+  /* ─── Tape design system (signal-amber accent + warm near-black) ─── */
+  --tape-bg: oklch(14% 0.004 60);
+  --tape-bg-raised: oklch(17% 0.005 60);
+  --tape-bg-card: oklch(19% 0.005 60);
+  --tape-bg-hover: oklch(22% 0.006 60);
+  --tape-bg-inset: oklch(12% 0.004 60);
+
+  --tape-line: oklch(28% 0.006 60);
+  --tape-line-strong: oklch(36% 0.008 60);
+  --tape-line-faint: oklch(22% 0.005 60);
+
+  --tape-ink: oklch(96% 0.005 80);
+  --tape-ink-2: oklch(72% 0.006 70);
+  --tape-ink-3: oklch(52% 0.006 65);
+  --tape-ink-4: oklch(38% 0.006 60);
+
+  --tape-up: oklch(78% 0.17 150);
+  --tape-up-dim: oklch(78% 0.17 150 / 0.12);
+  --tape-down: oklch(68% 0.20 25);
+  --tape-down-dim: oklch(68% 0.20 25 / 0.12);
+
+  --tape-acc: oklch(82% 0.16 260);
+  --tape-acc-dim: oklch(82% 0.16 260 / 0.12);
+  --tape-acc-line: oklch(82% 0.16 260 / 0.30);
+  --tape-acc-ink: oklch(22% 0.08 260);
+
+  --font-serif: 'Instrument Serif', ui-serif, Georgia, serif;
+  --font-geist: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: 'Geist Mono', ui-monospace, monospace;
+  --tape-e: cubic-bezier(.2,.8,.2,1);
+
+  /* ─── Legacy tokens re-pointed to Tape palette ───
+     Every existing component reads from these vars or from the JS Theme
+     model (which is also re-pointed). Reskinning here propagates app-wide. */
+
+  /* ─── Surfaces (warm near-black) ─── */
+  --bg-app: oklch(14% 0.004 60);
+  --bg-card: oklch(19% 0.005 60);
+  --bg-card-hover: oklch(22% 0.006 60);
+  --bg-card-elevated: oklch(20% 0.005 60);
+  --bg-input: oklch(12% 0.004 60);
+  --bg-sidebar: oklch(13% 0.004 60);
+  --bg-surface-subtle: oklch(100% 0 0 / 0.02);
 
   /* ─── Borders ─── */
-  --border-default: rgba(255,255,255,0.06);
-  --border-hover: rgba(255,255,255,0.10);
-  --border-active: rgba(108, 138, 255, 0.3);
-  --border-subtle: rgba(255,255,255,0.03);
+  --border-default: oklch(28% 0.006 60);
+  --border-hover: oklch(36% 0.008 60);
+  --border-active: oklch(82% 0.16 260 / 0.35);
+  --border-subtle: oklch(22% 0.005 60);
 
-  /* ─── Text ─── */
-  --text-primary: #f0f0f5;
-  --text-secondary: #6e6e88;
-  --text-tertiary: #404058;
-  --text-muted: #2e2e42;
+  /* ─── Text (warm) ─── */
+  --text-primary: oklch(96% 0.005 80);
+  --text-secondary: oklch(72% 0.006 70);
+  --text-tertiary: oklch(52% 0.006 65);
+  --text-muted: oklch(38% 0.006 60);
 
   /* ─── Signals ─── */
-  --green: #00d68f;
-  --green-dim: rgba(0, 214, 143, 0.10);
-  --green-border: rgba(0, 214, 143, 0.18);
-  --red: #ff5c5c;
-  --red-dim: rgba(255, 92, 92, 0.10);
-  --red-border: rgba(255, 92, 92, 0.18);
+  --green: oklch(78% 0.17 150);
+  --green-dim: oklch(78% 0.17 150 / 0.12);
+  --green-border: oklch(78% 0.17 150 / 0.28);
+  --red: oklch(68% 0.20 25);
+  --red-dim: oklch(68% 0.20 25 / 0.12);
+  --red-border: oklch(68% 0.20 25 / 0.28);
 
-  /* ─── Accents ─── */
-  --blue: #6c8aff;
-  --blue-dim: rgba(108, 138, 255, 0.10);
-  --blue-border: rgba(108, 138, 255, 0.20);
-  --purple: #a78bfa;
-  --purple-dim: rgba(167, 139, 250, 0.10);
-  --amber: #f5a623;
-  --amber-dim: rgba(245, 166, 35, 0.10);
-  --cyan: #22d3ee;
+  /* ─── Accents (Tape blue primary) ─── */
+  --blue: oklch(82% 0.16 260);
+  --blue-dim: oklch(82% 0.16 260 / 0.12);
+  --blue-border: oklch(82% 0.16 260 / 0.30);
+  --purple: oklch(82% 0.16 260);
+  --purple-dim: oklch(82% 0.16 260 / 0.12);
+  --amber: oklch(82% 0.16 260);
+  --amber-dim: oklch(82% 0.16 260 / 0.12);
+  --cyan: oklch(78% 0.10 240);
 
-  /* ─── Typography ─── */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  /* ─── Typography (Tape) ─── */
+  --font-sans: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
 
   /* ─── Type Scale ─── */
   --text-xs: 9px;
@@ -218,3 +254,96 @@ h1, h2, h3, h4, h5, h6, p { margin: 0; }
   from { opacity: 0; transform: translateX(20px); }
   to   { opacity: 1; transform: translateX(0); }
 }
+
+/* ═══════════════════════════════════════════════════════
+   Tape — design system primitives
+   ═══════════════════════════════════════════════════════ */
+
+.serif {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+  font-weight: 400;
+}
+
+.mono-tape {
+  font-family: var(--font-geist-mono);
+  font-feature-settings: 'tnum','zero';
+  letter-spacing: -0.02em;
+}
+
+.label-tape {
+  font-family: var(--font-geist-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tape-ink-3);
+  font-weight: 500;
+}
+
+.kicker {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 22px 0 12px;
+}
+.kicker .num {
+  font-family: var(--font-geist-mono);
+  font-size: 10.5px;
+  color: var(--tape-ink-4);
+  letter-spacing: 0.08em;
+  padding-top: 4px;
+}
+.kicker .title {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--tape-ink);
+  line-height: 1;
+}
+
+.tape-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tape-ink-3);
+  display: inline-block;
+}
+.tape-dot.up { background: var(--tape-up); box-shadow: 0 0 8px var(--tape-up); }
+.tape-dot.down { background: var(--tape-down); box-shadow: 0 0 8px var(--tape-down); }
+.tape-dot.acc { background: var(--tape-acc); box-shadow: 0 0 8px var(--tape-acc); }
+
+.tape-kbd {
+  font-family: var(--font-geist-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+@keyframes tape-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.tape-strip {
+  display: flex;
+  gap: 28px;
+  white-space: nowrap;
+  animation: tape-marquee 80s linear infinite;
+  padding: 0 10px;
+  width: max-content;
+}
+
+@keyframes tape-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes tape-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tape-fade-in { animation: tape-fade-up 0.35s var(--tape-e) both; }
+.tape-pulse { animation: tape-pulse 2s infinite; }

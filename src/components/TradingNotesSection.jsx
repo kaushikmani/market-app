@@ -317,19 +317,27 @@ const NoteCard = ({ note, onTickerClick, onDelete, onUpdate }) => {
             </>
           )}
           {note.content && !editing && (
-            <span
+            <button
               onClick={() => setShowTranscript(!showTranscript)}
               style={{
                 fontSize: '10px',
                 fontWeight: 600,
-                color: Theme.colors.tertiaryText,
+                color: Theme.colors.secondaryText,
                 cursor: 'pointer',
-                marginTop: '6px',
-                display: 'inline-block',
+                marginTop: '8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: Theme.colors.surfaceSubtle,
+                border: `1px solid ${Theme.colors.borderSubtle}`,
+                borderRadius: Theme.radius.xs,
+                padding: '3px 10px',
+                fontFamily: 'inherit',
+                transition: 'all 0.15s ease',
               }}
             >
-              {showTranscript ? 'Hide original' : 'Show original'}
-            </span>
+              {showTranscript ? '▾ Hide transcript' : '▸ Show transcript'}
+            </button>
           )}
         </div>
       )}
@@ -1602,34 +1610,35 @@ const TodayGamePlan = ({ todayNoteCount, onTickerClick }) => {
   );
 };
 
-// Day tabs sidebar (right side)
+// Day tabs — horizontal strip
 const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
   if (notesByDate.length === 0) return null;
 
   return (
     <div style={{
-      position: 'sticky',
-      top: '16px',
       display: 'flex',
-      flexDirection: 'column',
       gap: '4px',
-      minWidth: '56px',
+      overflowX: 'auto',
+      paddingBottom: '4px',
+      scrollbarWidth: 'thin',
     }}>
       {/* "All" tab */}
       <div
         onClick={() => onSelectDate(null)}
         style={{
-          padding: '8px 6px',
+          padding: '6px 14px',
           borderRadius: Theme.radius.sm,
           background: selectedDate === null ? Theme.colors.accentBlue : 'transparent',
           color: selectedDate === null ? '#fff' : Theme.colors.secondaryText,
-          fontSize: '10px',
+          fontSize: '11px',
           fontWeight: selectedDate === null ? 700 : 500,
           textAlign: 'center',
           cursor: 'pointer',
           transition: 'all 0.15s ease',
           border: `1px solid ${selectedDate === null ? Theme.colors.accentBlue : Theme.colors.cardBorder}`,
           letterSpacing: '0.03em',
+          flexShrink: 0,
+          whiteSpace: 'nowrap',
         }}
       >
         All
@@ -1643,7 +1652,7 @@ const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
             key={date}
             onClick={() => onSelectDate(date)}
             style={{
-              padding: '6px 6px',
+              padding: '6px 10px',
               borderRadius: Theme.radius.sm,
               background: isActive ? Theme.colors.accentBlue : 'transparent',
               color: isActive ? '#fff' : isWeekend ? Theme.colors.tertiaryText : Theme.colors.secondaryText,
@@ -1651,9 +1660,10 @@ const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
               cursor: 'pointer',
               transition: 'all 0.15s ease',
               border: `1px solid ${isActive ? Theme.colors.accentBlue : Theme.colors.cardBorder}`,
+              flexShrink: 0,
             }}
           >
-            <div style={{ fontSize: '14px', fontWeight: 800, lineHeight: '1.2' }}>
+            <div style={{ fontSize: '13px', fontWeight: 800, lineHeight: '1.2' }}>
               {formatDayNum(date)}
             </div>
             <div style={{ fontSize: '9px', fontWeight: 600, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
@@ -1662,7 +1672,7 @@ const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
             <div style={{
               fontSize: '9px',
               fontWeight: 700,
-              marginTop: '2px',
+              marginTop: '1px',
               opacity: isActive ? 0.8 : 0.5,
             }}>
               {notes.length}
@@ -1670,6 +1680,60 @@ const DaySidebar = ({ notesByDate, selectedDate, onSelectDate }) => {
           </div>
         );
       })}
+    </div>
+  );
+};
+
+// AI Recap — collapsible wrapper for TodayGamePlan + NotesSummary + BriefSection
+const AiRecap = ({ todayNoteCount, onTickerClick, brief, briefLoading, summaryRefreshTrigger }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 16px',
+          background: Theme.colors.cardBackground,
+          border: `1px solid ${Theme.colors.cardBorder}`,
+          borderRadius: Theme.radius.sm,
+          cursor: 'pointer',
+          userSelect: 'none',
+          transition: 'background 0.15s ease',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = Theme.colors.surfaceSubtle}
+        onMouseLeave={e => e.currentTarget.style.background = Theme.colors.cardBackground}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: Theme.colors.accentAmber, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            AI Recap
+          </span>
+          <span style={{ fontSize: '10px', color: Theme.colors.tertiaryText }}>
+            Game Plan · 3-Day Summary · Brief
+          </span>
+        </div>
+        <span style={{
+          fontSize: '13px',
+          color: Theme.colors.tertiaryText,
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.2s ease',
+          display: 'inline-block',
+          lineHeight: 1,
+        }}>
+          ▾
+        </span>
+      </div>
+
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+          <TodayGamePlan todayNoteCount={todayNoteCount} onTickerClick={onTickerClick} />
+          <NotesSummary onRefreshTrigger={summaryRefreshTrigger} />
+          <BriefSection brief={brief} briefLoading={briefLoading} onTickerClick={onTickerClick} />
+        </div>
+      )}
     </div>
   );
 };
@@ -1756,6 +1820,7 @@ export const TradingNotesSection = ({ onTickerClick }) => {
   };
 
   const handleDelete = async (id) => {
+    if (!confirm('Delete this note?')) return;
     try {
       setDeleteError(null);
       await deleteNote(id);
@@ -1816,13 +1881,7 @@ export const TradingNotesSection = ({ onTickerClick }) => {
         </div>
       )}
 
-      {/* Today's Game Plan — always shown, generates from today's notes */}
-      {!loading && <TodayGamePlan todayNoteCount={todayNoteCount} onTickerClick={onTickerClick} />}
-
-      {/* 3-Day Gemini Summary */}
-      {!loading && <NotesSummary onRefreshTrigger={summaryRefreshTrigger} />}
-
-      {/* Add note button / form */}
+      {/* Add note — primary action at top */}
       {showAddForm ? (
         <div style={{ position: 'relative' }}>
           <span
@@ -1859,39 +1918,38 @@ export const TradingNotesSection = ({ onTickerClick }) => {
         <button
           onClick={() => setShowAddForm(true)}
           style={{
-            background: 'transparent',
-            border: `1px dashed ${Theme.colors.cardBorder}`,
+            background: Theme.colors.accentBlue,
+            border: 'none',
             borderRadius: Theme.radius.sm,
-            color: Theme.colors.secondaryText,
+            color: '#fff',
             padding: '10px 20px',
             fontSize: '12px',
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: 'pointer',
             fontFamily: 'inherit',
             width: '100%',
             textAlign: 'center',
-            transition: 'all 0.15s ease',
+            transition: 'opacity 0.15s ease',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
           }}
-          onMouseEnter={e => {
-            e.currentTarget.style.borderColor = Theme.colors.accentBlue;
-            e.currentTarget.style.color = Theme.colors.accentBlue;
-            e.currentTarget.style.background = Theme.colors.accentBlueDim;
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.borderColor = Theme.colors.cardBorder;
-            e.currentTarget.style.color = Theme.colors.secondaryText;
-            e.currentTarget.style.background = 'transparent';
-          }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
         >
           + New Note
         </button>
       )}
 
-      {/* Yesterday's tickers with live prices */}
-      <YesterdayWatchlist onTickerClick={onTickerClick} />
-
-      {/* Summary from last 3-4 market days */}
-      <BriefSection brief={brief} briefLoading={briefLoading} onTickerClick={onTickerClick} />
+      {/* AI Recap — collapsible Game Plan · Summary · Brief */}
+      {!loading && (
+        <AiRecap
+          todayNoteCount={todayNoteCount}
+          onTickerClick={onTickerClick}
+          brief={brief}
+          briefLoading={briefLoading}
+          summaryRefreshTrigger={summaryRefreshTrigger}
+        />
+      )}
 
       {/* Ask your notes */}
       <NotesChat />
@@ -1910,7 +1968,6 @@ export const TradingNotesSection = ({ onTickerClick }) => {
             Filter by Ticker
           </div>
           <div className="flex items-center" style={{ flexWrap: 'wrap', gap: '6px' }}>
-            {/* All pill */}
             <span
               onClick={() => setSelectedTicker(null)}
               style={{
@@ -1950,59 +2007,55 @@ export const TradingNotesSection = ({ onTickerClick }) => {
         </div>
       )}
 
-      {/* Day tabs + Notes timeline */}
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-        {/* Day sidebar */}
+      {/* Date tabs (horizontal) + Notes timeline */}
+      <div className="flex flex-col gap-3">
         <DaySidebar
           notesByDate={notesByDate}
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
         />
 
-        {/* Notes content */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {filteredNotesByDate.length === 0 ? (
-            <div className="card flex items-center justify-center" style={{ height: '100px' }}>
-              <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>
-                {notesByDate.length === 0
-                  ? 'No notes yet. Add your first note above.'
-                  : selectedTicker
-                  ? `No notes tagged $${selectedTicker}${selectedDate ? ' for this day' : ''}.`
-                  : 'No notes for this day.'}
-              </span>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {filteredNotesByDate.map(({ date, notes }) => (
-                <div key={date}>
-                  <div style={{
-                    fontSize: '11px',
-                    fontWeight: 700,
-                    color: Theme.colors.tertiaryText,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                    padding: '8px 0 6px',
-                    borderBottom: `1px solid ${Theme.colors.borderSubtle}`,
-                    marginBottom: '10px',
-                  }}>
-                    {formatDate(date)}
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    {notes.map(note => (
-                      <NoteCard
-                        key={note.id}
-                        note={note}
-                        onTickerClick={onTickerClick}
-                        onDelete={handleDelete}
-                        onUpdate={updateNote}
-                      />
-                    ))}
-                  </div>
+        {filteredNotesByDate.length === 0 ? (
+          <div className="card flex items-center justify-center" style={{ height: '100px' }}>
+            <span style={{ fontSize: '12px', color: Theme.colors.secondaryText }}>
+              {notesByDate.length === 0
+                ? 'No notes yet. Add your first note above.'
+                : selectedTicker
+                ? `No notes tagged $${selectedTicker}${selectedDate ? ' for this day' : ''}.`
+                : 'No notes for this day.'}
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {filteredNotesByDate.map(({ date, notes }) => (
+              <div key={date}>
+                <div style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: Theme.colors.tertiaryText,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  padding: '8px 0 6px',
+                  borderBottom: `1px solid ${Theme.colors.borderSubtle}`,
+                  marginBottom: '10px',
+                }}>
+                  {formatDate(date)}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <div className="flex flex-col gap-3">
+                  {notes.map(note => (
+                    <NoteCard
+                      key={note.id}
+                      note={note}
+                      onTickerClick={onTickerClick}
+                      onDelete={handleDelete}
+                      onUpdate={updateNote}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

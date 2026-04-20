@@ -12,8 +12,8 @@ function formatDate(dateStr) {
 function TimeTag({ time }) {
   if (!time) return null;
   const label = time === 'BMO' ? 'Pre' : time === 'AMC' ? 'Post' : time === 'TNS' ? 'TBD' : time;
-  const color = time === 'BMO' ? Theme.colors.accentBlue : time === 'AMC' ? '#f0a500' : Theme.colors.tertiaryText;
-  const bg    = time === 'BMO' ? Theme.colors.accentBlueDim : time === 'AMC' ? 'rgba(240,165,0,0.10)' : 'rgba(255,255,255,0.05)';
+  const color = time === 'BMO' ? Theme.colors.accentBlue : time === 'AMC' ? 'var(--amber)' : Theme.colors.tertiaryText;
+  const bg    = time === 'BMO' ? Theme.colors.accentBlueDim : time === 'AMC' ? 'var(--amber-dim)' : 'rgba(255,255,255,0.05)';
   return (
     <span style={{
       fontSize: '8px', fontWeight: 700, padding: '1px 5px',
@@ -131,7 +131,7 @@ export function EarningsCalendarSection({ onTickerClick }) {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
         <div>
-          <div style={{ fontSize: '13px', fontWeight: 800, color: '#f0a500', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'monospace' }}>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--amber)', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'monospace' }}>
             Earnings Calendar
           </div>
           {data?.updatedAt && (
@@ -147,9 +147,9 @@ export function EarningsCalendarSection({ onTickerClick }) {
             padding: '4px 12px', fontSize: '9px', fontWeight: 700,
             fontFamily: 'monospace', letterSpacing: '0.08em', textTransform: 'uppercase',
             cursor: loading ? 'wait' : 'pointer',
-            border: '1px solid #f0a500', borderRadius: '3px',
+            border: '1px solid var(--amber)', borderRadius: '3px',
             background: 'transparent',
-            color: loading ? Theme.colors.tertiaryText : '#f0a500',
+            color: loading ? Theme.colors.tertiaryText : 'var(--amber)',
           }}
         >
           {loading ? '...' : 'REFRESH'}
@@ -165,10 +165,10 @@ export function EarningsCalendarSection({ onTickerClick }) {
             style={{
               padding: '3px 12px', fontSize: '10px', fontWeight: 700,
               fontFamily: 'monospace', cursor: 'pointer',
-              border: `1px solid ${week === w ? '#f0a500' : Theme.colors.cardBorder}`,
+              border: `1px solid ${week === w ? 'var(--amber)' : Theme.colors.cardBorder}`,
               borderRadius: '3px',
-              background: week === w ? 'rgba(240,165,0,0.12)' : 'transparent',
-              color: week === w ? '#f0a500' : Theme.colors.secondaryText,
+              background: week === w ? 'var(--amber-dim)' : 'transparent',
+              color: week === w ? 'var(--amber)' : Theme.colors.secondaryText,
             }}
           >
             {w === 'this' ? 'This Week' : 'Next Week'}
