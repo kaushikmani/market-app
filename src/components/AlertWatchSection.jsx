@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiService } from '../services/ApiService';
+
+const REFRESH_INTERVAL_MS = 60_000; // auto-refresh every 60s
 
 function distanceColor(absPct, threshold) {
   if (absPct == null) return 'var(--text-tertiary)';
@@ -8,40 +10,95 @@ function distanceColor(absPct, threshold) {
   return 'var(--text-tertiary)';                              // far
 }
 
+function formatAge(ts) {
+  if (!ts) return '';
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
+
 export function AlertWatchSection({ onTickerClick }) {
   const [alerts, setAlerts] = useState(null);
-  const [smas, setSmas] = useState({}); // { TICKER: { price, smas: {8: x, 50: y} } }
+  const [smas, setSmas] = useState({}); // { TICKER: { price (daily close), smas: {8: x, 50: y} } }
+  const [quotes, setQuotes] = useState({}); // { TICKER: { price (live), changePct } }
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastFetched, setLastFetched] = useState(null);
+  const [, forceRender] = useState(0); // tick the "Xs ago" label
+  const aliveRef = useRef(true);
+
+  const refresh = useCallback(async (isInitial = false) => {
+    if (isInitial) setLoading(true); else setRefreshing(true);
+    try {
+      const d = await ApiService.getAlerts();
+      if (!aliveRef.current) return;
+      const list = (d?.alerts || []).filter(a => a.enabled);
+      setAlerts(list);
+
+      const tickers = [...new Set(list.map(a => a.ticker))];
+      if (tickers.length > 0) {
+        // Live quotes (Schwab) + daily SMAs (Yahoo, cached 60s) in parallel
+        const [smaResp, quoteResp] = await Promise.all([
+          ApiService.getSMAsBatch(tickers).catch(() => null),
+          ApiService.getQuotes(tickers).catch(() => null),
+        ]);
+        if (!aliveRef.current) return;
+
+        const smaData = smaResp?.data || {};
+        setSmas(prev => {
+          const next = { ...prev };
+          for (const [t, r] of Object.entries(smaData)) {
+            if (r && !r.error) next[t] = r;
+          }
+          return next;
+        });
+
+        const quoteData = quoteResp?.quotes || {};
+        setQuotes(prev => {
+          const next = { ...prev };
+          for (const [t, q] of Object.entries(quoteData)) {
+            if (q && typeof q.price === 'number') next[t] = q;
+          }
+          return next;
+        });
+      }
+      setLastFetched(Date.now());
+    } finally {
+      if (aliveRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    ApiService.getAlerts()
-      .then(d => {
-        if (!alive) return;
-        const list = (d?.alerts || []).filter(a => a.enabled);
-        setAlerts(list);
-        const tickers = [...new Set(list.map(a => a.ticker))];
-        return Promise.all(tickers.map(t =>
-          ApiService.getSMAs(t).then(r => [t, r]).catch(() => [t, null])
-        ));
-      })
-      .then(rows => {
-        if (!alive || !rows) return;
-        const map = {};
-        for (const [t, r] of rows) if (r) map[t] = r;
-        setSmas(map);
-      })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    aliveRef.current = true;
+    refresh(true);
+    const interval = setInterval(() => refresh(false), REFRESH_INTERVAL_MS);
+    return () => {
+      aliveRef.current = false;
+      clearInterval(interval);
+    };
+  }, [refresh]);
+
+  // Tick the "Xs ago" label every 10s so it stays fresh
+  useEffect(() => {
+    const t = setInterval(() => forceRender(n => n + 1), 10_000);
+    return () => clearInterval(t);
   }, []);
 
   const rows = useMemo(() => {
     if (!alerts) return [];
     return alerts.map(a => {
-      const data = smas[a.ticker];
-      const price = data?.price ?? null;
-      const smaObj = data?.smas?.[a.period];
+      const smaData = smas[a.ticker];
+      const liveQuote = quotes[a.ticker];
+      // Prefer Schwab live price, fall back to Yahoo daily close
+      const price = liveQuote?.price ?? smaData?.price ?? null;
+      const isLive = liveQuote?.price != null;
+      const smaObj = smaData?.smas?.[a.period];
       const smaValue = typeof smaObj === 'object' ? smaObj.value : smaObj;
       const distancePct = (price != null && smaValue != null)
         ? ((price - smaValue) / smaValue) * 100
@@ -49,17 +106,17 @@ export function AlertWatchSection({ onTickerClick }) {
       return {
         ...a,
         price,
+        isLive,
         smaValue,
         distancePct,
         absDistance: distancePct != null ? Math.abs(distancePct) : null,
       };
     }).sort((x, y) => {
-      // closest-to-trigger first; nulls last
       if (x.absDistance == null) return 1;
       if (y.absDistance == null) return -1;
       return x.absDistance - y.absDistance;
     });
-  }, [alerts, smas]);
+  }, [alerts, smas, quotes]);
 
   if (loading && rows.length === 0) {
     return (
@@ -90,13 +147,54 @@ export function AlertWatchSection({ onTickerClick }) {
       <div className="kicker">
         <span className="num">·</span>
         <h2 className="title">Alert watch</h2>
-        <span style={{
-          marginLeft: 'auto', fontFamily: 'var(--font-geist-mono)',
-          fontSize: 10.5, color: 'var(--text-tertiary)',
-          letterSpacing: '0.04em', textTransform: 'uppercase',
+        <div style={{
+          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12,
         }}>
-          {rows.length} watching · {inZone} in zone
-        </span>
+          <span style={{
+            fontFamily: 'var(--font-geist-mono)',
+            fontSize: 10.5, color: 'var(--text-tertiary)',
+            letterSpacing: '0.04em', textTransform: 'uppercase',
+          }}>
+            {rows.length} watching · {inZone} in zone
+          </span>
+          <span style={{
+            fontFamily: 'var(--font-geist-mono)', fontSize: 10,
+            color: 'var(--text-tertiary)',
+          }}>
+            {refreshing ? 'refreshing…' : `updated ${formatAge(lastFetched)}`}
+          </span>
+          <button
+            onClick={() => refresh(false)}
+            disabled={refreshing}
+            title="Refresh prices + SMAs"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', fontSize: 11, fontWeight: 500,
+              border: '1px solid var(--border-default)', borderRadius: 6,
+              background: 'var(--bg-card)', color: 'var(--text-secondary)',
+              cursor: refreshing ? 'default' : 'pointer',
+              opacity: refreshing ? 0.5 : 1,
+              transition: 'border-color 0.15s var(--tape-e), color 0.15s var(--tape-e)',
+              fontFamily: 'inherit',
+            }}
+            onMouseEnter={e => {
+              if (!refreshing) {
+                e.currentTarget.style.borderColor = 'var(--tape-acc-line)';
+                e.currentTarget.style.color = 'var(--tape-acc)';
+              }
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--border-default)';
+              e.currentTarget.style.color = 'var(--text-secondary)';
+            }}
+          >
+            <span style={{
+              display: 'inline-block',
+              animation: refreshing ? 'spin 0.8s linear infinite' : 'none',
+            }}>↻</span>
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div style={{
@@ -154,7 +252,13 @@ export function AlertWatchSection({ onTickerClick }) {
               <span className="mono-tape" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
                 {r.period}MA
               </span>
-              <span className="mono-tape" style={{ fontSize: 12, textAlign: 'right', color: 'var(--text-primary)' }}>
+              <span className="mono-tape" style={{
+                fontSize: 12, textAlign: 'right', color: 'var(--text-primary)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5,
+              }}>
+                {r.isLive && (
+                  <span className="tape-dot up tape-pulse" style={{ width: 4, height: 4 }} title="Live quote" />
+                )}
                 {r.price != null ? r.price.toFixed(2) : '—'}
               </span>
               <span className="mono-tape" style={{ fontSize: 12, textAlign: 'right', color: 'var(--text-secondary)' }}>

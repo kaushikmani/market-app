@@ -16,6 +16,12 @@ export const ApiService = {
   getSMAData: (ticker) =>
     fetchJson(`${API_BASE}/sma?ticker=${encodeURIComponent(ticker)}`),
 
+  getSMAsBatch: (tickers) =>
+    fetchJson(`${API_BASE}/smas?tickers=${encodeURIComponent(tickers.join(','))}`),
+
+  getQuotes: (tickers) =>
+    fetchJson(`${API_BASE}/quotes?tickers=${encodeURIComponent(tickers.join(','))}`),
+
   getEarningsCalendar: () =>
     fetchJson(`${API_BASE}/earnings-calendar`),
 

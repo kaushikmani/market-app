@@ -236,11 +236,65 @@ app.get('/api/sma', async (req, res) => {
   if (tickerErr) return res.status(400).json({ error: tickerErr });
 
   try {
-    const data = await fetchSMAs(ticker);
+    const data = await getCachedSMAs(ticker);
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// ── Batched SMA endpoint with 60s in-memory cache + upstream throttling ───────
+const SMA_CACHE_TTL_MS = 60_000;
+const SMA_UPSTREAM_SPACING_MS = 250; // min gap between Yahoo calls
+const smaCache = new Map(); // ticker → { data, expiry }
+let smaUpstreamChain = Promise.resolve();
+
+function getCachedSMAs(ticker) {
+  const T = ticker.toUpperCase();
+  const hit = smaCache.get(T);
+  if (hit && hit.expiry > Date.now()) return Promise.resolve(hit.data);
+
+  // Serialize upstream calls with a minimum spacing to stay under Yahoo's limit
+  const job = smaUpstreamChain.then(async () => {
+    const again = smaCache.get(T);
+    if (again && again.expiry > Date.now()) return again.data;
+    const data = await fetchSMAs(T);
+    smaCache.set(T, { data, expiry: Date.now() + SMA_CACHE_TTL_MS });
+    await new Promise(r => setTimeout(r, SMA_UPSTREAM_SPACING_MS));
+    return data;
+  });
+  smaUpstreamChain = job.catch(() => {}); // chain survives failures
+  return job;
+}
+
+// ── Live quotes (Schwab) for arbitrary tickers ────────────────────────────────
+app.get('/api/quotes', async (req, res) => {
+  const raw = String(req.query.tickers || '');
+  const tickers = [...new Set(
+    raw.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
+  )].slice(0, 50);
+  if (tickers.length === 0) return res.status(400).json({ error: 'tickers query param is required' });
+  try {
+    const quotes = await getQuotes(tickers);
+    res.json({ quotes });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/smas', async (req, res) => {
+  const raw = String(req.query.tickers || '');
+  const tickers = [...new Set(
+    raw.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
+  )].slice(0, 50); // cap at 50 per request
+  if (tickers.length === 0) return res.status(400).json({ error: 'tickers query param is required' });
+
+  const results = await Promise.all(
+    tickers.map(t => getCachedSMAs(t).then(d => [t, d]).catch(err => [t, { error: err.message }]))
+  );
+  const data = {};
+  for (const [t, d] of results) data[t] = d;
+  res.json({ data });
 });
 
 app.get('/api/earnings-preview', heavyLimiter, async (req, res) => {
