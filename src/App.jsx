@@ -34,6 +34,7 @@ import { JournalSection } from './components/JournalSection';
 import { RightRail } from './components/RightRail';
 import { OverviewHero } from './components/OverviewHero';
 import { AlertWatchSection } from './components/AlertWatchSection';
+import { EarningsWatchSection } from './components/EarningsWatchSection';
 import { TradeLogHero } from './components/TradeLogHero';
 import { OutlookHero } from './components/OutlookHero';
 import { StockHero } from './components/StockHero';
@@ -396,6 +397,9 @@ function App() {
 
             {/* ── Alert watch — live distance to SMA for every active alert ── */}
             <AlertWatchSection onTickerClick={handleTickerClick} />
+
+            {/* ── Earnings watch — next earnings date per alert ticker ── */}
+            <EarningsWatchSection onTickerClick={handleTickerClick} />
 
             {/* ── 0. Trading Rules — read every morning ── */}
             <div style={{ paddingTop: '20px' }}>

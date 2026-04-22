@@ -43,6 +43,74 @@ function getWeekDates(offsetWeeks = 0) {
 
 let cache = { data: null, expiry: 0 };
 
+// ── Lookahead: scan N weeks forward and find the next earnings date per ticker ─
+// Reuses per-date Nasdaq cache; 60-min TTL since earnings dates don't move often
+const lookaheadCache = new Map(); // key → { data, expiry }
+const LOOKAHEAD_TTL_MS = 60 * 60 * 1000;
+const dayCache = new Map(); // date → { data, expiry }
+const DAY_TTL_MS = 60 * 60 * 1000;
+
+function getNextWeekdays(weeks) {
+  const dates = [];
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  let added = 0;
+  while (added < weeks * 5) {
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6) {
+      dates.push(d.toISOString().substring(0, 10));
+      added += 1;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
+async function getDayEarnings(date) {
+  const hit = dayCache.get(date);
+  if (hit && hit.expiry > Date.now()) return hit.data;
+  const data = fetchNasdaqEarnings(date);
+  dayCache.set(date, { data, expiry: Date.now() + DAY_TTL_MS });
+  return data;
+}
+
+export async function fetchEarningsLookahead(tickers, weeksAhead = 8) {
+  const wanted = new Set(tickers.map(t => t.toUpperCase()));
+  const cacheKey = [...wanted].sort().join(',') + '|' + weeksAhead;
+  const hit = lookaheadCache.get(cacheKey);
+  if (hit && hit.expiry > Date.now()) return hit.data;
+
+  const dates = getNextWeekdays(weeksAhead);
+  const found = {}; // TICKER → { date, time, epsEstimate, company }
+
+  // Scan date-by-date, short-circuit when all tickers are located
+  for (const date of dates) {
+    if (Object.keys(found).length === wanted.size) break;
+    const items = await getDayEarnings(date);
+    for (const item of items) {
+      const sym = item.ticker?.toUpperCase();
+      if (wanted.has(sym) && !found[sym]) {
+        found[sym] = {
+          date: item.date,
+          time: item.time,
+          epsEstimate: item.epsEstimate,
+          company: item.company,
+        };
+      }
+    }
+  }
+
+  const data = {
+    success: true,
+    data: found,
+    missing: [...wanted].filter(t => !found[t]),
+    weeksAhead,
+    updatedAt: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+  };
+  lookaheadCache.set(cacheKey, { data, expiry: Date.now() + LOOKAHEAD_TTL_MS });
+  return data;
+}
+
 export async function fetchEarningsCalendar() {
   const now = Date.now();
   if (cache.data && now < cache.expiry) return cache.data;

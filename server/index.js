@@ -23,7 +23,7 @@ import { scrapePreMarketMovers } from './scrapers/preMarketMovers.js';
 import { scanGaps } from './scrapers/gapScanner.js';
 import { fetchWatchlistPrices } from './scrapers/watchlistPrices.js';
 import { runAlertCheck, getRecentTriggers, clearTrigger } from './services/alertMonitor.js';
-import { fetchEarningsCalendar } from './scrapers/earningsCalendar.js';
+import { fetchEarningsCalendar, fetchEarningsLookahead } from './scrapers/earningsCalendar.js';
 import { fetchMarketSentiment } from './scrapers/marketSentiment.js';
 import { callGeminiDirect } from './services/whisperService.js';
 import notesRouter, { generateNotesSummary } from './routes/notes.js';
@@ -395,6 +395,22 @@ app.get('/api/earnings-calendar', async (req, res) => {
     }
   } catch (error) {
     if (!disk) res.status(500).json({ error: error.message });
+  }
+});
+
+// Earnings lookahead — next upcoming earnings date per requested ticker
+app.get('/api/earnings-lookahead', async (req, res) => {
+  const raw = String(req.query.tickers || '');
+  const tickers = [...new Set(
+    raw.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
+  )].slice(0, 50);
+  const weeksAhead = Math.min(12, Math.max(1, parseInt(req.query.weeks) || 8));
+  if (tickers.length === 0) return res.status(400).json({ error: 'tickers query param is required' });
+  try {
+    const data = await fetchEarningsLookahead(tickers, weeksAhead);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

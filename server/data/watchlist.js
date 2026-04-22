@@ -20,7 +20,7 @@ export const WATCHLIST = [
   },
   {
     name: 'Chip Design & Processors',
-    tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'TSM', 'TSEM', 'GFS'],
+    tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'AOSL', 'NVTS', 'VICR', 'POWI', 'TSM', 'TSEM', 'GFS'],
   },
   {
     name: 'Semiconductor Equipment',

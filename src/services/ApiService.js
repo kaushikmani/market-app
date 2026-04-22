@@ -22,6 +22,9 @@ export const ApiService = {
   getQuotes: (tickers) =>
     fetchJson(`${API_BASE}/quotes?tickers=${encodeURIComponent(tickers.join(','))}`),
 
+  getEarningsLookahead: (tickers, weeks = 8) =>
+    fetchJson(`${API_BASE}/earnings-lookahead?tickers=${encodeURIComponent(tickers.join(','))}&weeks=${weeks}`),
+
   getEarningsCalendar: () =>
     fetchJson(`${API_BASE}/earnings-calendar`),
 

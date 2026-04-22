@@ -5,6 +5,7 @@ const THEMES = [
   { name: 'Cybersecurity',          tickers: ['CRWD', 'PANW', 'FTNT', 'ZS', 'OKTA', 'S', 'RBRK'] },
   { name: 'Storage & Memory',       tickers: ['MU', 'WDC', 'STX', 'SNDK', 'PSTG'] },
   { name: 'Chip Design & Processors', tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'TSM', 'GFS'] },
+  { name: 'Power Management',         tickers: ['AOSL', 'NVTS', 'VICR', 'POWI', 'ON', 'TXN', 'ADI'] },
   { name: 'Semiconductor Equipment',  tickers: ['ASML', 'LRCX', 'KLAC', 'AMAT', 'AMKR', 'ICHR', 'FORM', 'CAMT', 'TER'] },
   { name: 'AI & Custom Silicon',    tickers: ['ALAB', 'CRDO', 'INDI', 'SOLS'] },
   { name: 'Optical/Photonics',      tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW', 'CLS'] },
