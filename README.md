@@ -26,7 +26,7 @@ A real-time stock market analysis dashboard built for active traders. StockAnaly
 ### Market Dashboard
 - **Pre-Market Report** — AI-generated macro narrative combining futures, sentiment, and overnight news
 - **Market Briefing** — Scraped intraday market summary with sector rotation context
-- **Gap Scanner** — Scans your entire watchlist for gap-ups and gap-downs using real-time Polygon.io snapshots
+- **Gap Scanner** — Scans your entire watchlist for gap-ups and gap-downs using real-time Schwab quotes
 - **Pre-Market Movers** — Top pre-market gainers and losers
 - **Market Sentiment** — Fear & Greed index with trend indicators
 - **Theme Performance** — Sector and thematic ETF performance heatmap by time range
@@ -41,12 +41,12 @@ A real-time stock market analysis dashboard built for active traders. StockAnaly
   - RSI, MACD, Bollinger Bands, ATR, and volatility metrics
   - Peer comparison table
   - AI-generated outlook summary
-  - Earnings preview powered by Gemini
+  - AI-generated earnings preview (local LLM)
 
 ### News & Intelligence
 - **Market News** — Aggregated headlines from major financial sources (10-minute cache)
 - **Stock-Specific News** — Per-ticker news from Google News, Finviz, and X (formerly Twitter) in parallel
-- **AI Sentiment Scoring** — Gemini scores each headline Bullish / Bearish / Neutral with a confidence rating
+- **AI Sentiment Scoring** — the local LLM scores each headline Bullish / Bearish / Neutral with a confidence rating
 - **Substack Feed** — Pull articles from your followed Substack newsletters
 - **X / Twitter Feed** — Curated financial Twitter feed (requires one-time login session)
 
@@ -54,9 +54,9 @@ A real-time stock market analysis dashboard built for active traders. StockAnaly
 - Create price alerts with conditions: above, below, crosses above, crosses below
 - Toggle alerts on/off individually
 - Alert state persists across server restarts
-- Alert monitor polls during market hours (9:30am–4:00pm ET) using Polygon.io live data
+- Alert monitor polls during market hours (9:30am–4:00pm ET) using live Schwab quotes
 
-### AI Features (Gemini-powered)
+### AI Features (local LLM via Ollama)
 - **Ask AI** — Ask any natural language question about a stock with full technical and fundamental context injected automatically
 - **Earnings Preview** — Pre-earnings AI briefing covering consensus expectations, historical beat/miss patterns, and key risk factors
 - **Pre-Market Report** — Daily AI macro narrative generated at server startup
@@ -65,8 +65,8 @@ A real-time stock market analysis dashboard built for active traders. StockAnaly
 - **Notes Brief** — AI-synthesized daily trading brief from your last 4 days of notes
 
 ### Trading Journal
-- **Text Notes** — Create timestamped trading notes; Gemini auto-extracts tickers and summarizes content
-- **Voice Notes** — Upload audio recordings; transcribed via local Whisper, then summarized by Gemini
+- **Text Notes** — Create timestamped trading notes; the local LLM auto-extracts tickers and summarizes content
+- **Voice Notes** — Upload audio recordings; transcribed via local Whisper, then summarized by the local LLM
 - **Ask Your Notes** — Query your note history with natural language (e.g., "What did I say about NVDA this week?")
 - **Daily Brief** — Synthesized summary of your recent notes and trade ideas
 
@@ -82,8 +82,8 @@ A real-time stock market analysis dashboard built for active traders. StockAnaly
 | Backend framework | Express | 5 |
 | Runtime | Node.js | 18+ |
 | Web scraping | Playwright (Chromium) | 1.52 |
-| Real-time market data | Polygon.io REST API | — |
-| AI / LLM | Google Gemini 2.5 Flash | — |
+| Real-time market data | Schwab Trader API (OAuth 2.0) | v1 |
+| AI / LLM | Ollama (local, default `gemma4:e4b`) | — |
 | Speech-to-text | OpenAI Whisper (local CLI) | — |
 | File uploads | Multer | 2 |
 | Styling | Plain CSS (dark theme) | — |
@@ -92,12 +92,12 @@ A real-time stock market analysis dashboard built for active traders. StockAnaly
 
 | Source | What it provides |
 |---|---|
-| **Polygon.io** | Real-time snapshots, OHLCV aggregates, SMA calculations for alerts |
+| **Schwab Trader API** | Real-time quotes, OHLCV price history, data for gap scans and alerts |
 | **Finviz** | Fundamentals, peer lists, stock-specific news |
 | **Yahoo Finance** | SMAs (20/50/200), technical scan data |
 | **Google News** | Per-ticker news aggregation |
 | **X / Twitter** | Financial commentary feed |
-| **Google Gemini** | AI analysis, sentiment scoring, summaries |
+| **Ollama (local)** | AI analysis, sentiment scoring, summaries |
 | **Whisper (local)** | Voice note transcription |
 
 ---
@@ -106,8 +106,8 @@ A real-time stock market analysis dashboard built for active traders. StockAnaly
 
 - **Node.js 18+** — [nodejs.org](https://nodejs.org)
 - **Chrome / Chromium** — Playwright downloads its own managed Chromium automatically on first run
-- **Polygon.io API key** — Free tier sufficient for most features (see [API Keys](#api-keys))
-- **Google Gemini API key** — Free tier available (see [API Keys](#api-keys))
+- **Schwab developer app** — A free [Schwab Developer Portal](https://developer.schwab.com) app with the Trader API enabled, providing a Client ID (App Key) and Client Secret (see [Authentication](#authentication))
+- **Ollama** — Local LLM runtime powering all AI features. Install from [ollama.com](https://ollama.com), then pull the model: `ollama pull gemma4:e4b`
 - **Whisper CLI** _(optional)_ — Required only for voice note transcription. Install via `pip install openai-whisper`
 
 ---
@@ -145,20 +145,22 @@ cd ..
 
 ### 5. Configure environment
 
-Copy the example env file and fill in your API keys:
-
-```bash
-cp .env.example .env
-```
-
-Then edit `.env`:
+Create `server/.env` with your Schwab app credentials:
 
 ```env
-POLYGON_API_KEY=your_polygon_api_key_here
-GEMINI_API_KEY=your_gemini_api_key_here
+SCHWAB_CLIENT_ID=your_schwab_app_key
+SCHWAB_CLIENT_SECRET=your_schwab_app_secret
 ```
 
-> See [API Keys](#api-keys) below for where to obtain each key.
+Then run the one-time OAuth flow to obtain and store your tokens:
+
+```bash
+cd server && node schwab-auth.js
+```
+
+This appends `SCHWAB_ACCESS_TOKEN`, `SCHWAB_REFRESH_TOKEN`, and their expiry timestamps to `server/.env`. See [Authentication](#authentication) below for the full walkthrough.
+
+> AI features need a running Ollama instance (`ollama serve`) with the `gemma4:e4b` model pulled. Defaults point at `http://localhost:11434`; override with `OLLAMA_URL` / `OLLAMA_MODEL` if needed.
 
 ### 6. Start the development servers
 
@@ -189,28 +191,38 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## API Keys
+## Authentication
 
-### Polygon.io (Market Data)
+Market data comes from the **Schwab Trader API**, which uses OAuth 2.0. Setup is a one-time flow; after that the server refreshes tokens on its own.
 
-Used for: real-time stock snapshots, gap scanning, watchlist prices, OHLCV data, price alerts.
+### 1. Create a Schwab developer app
 
-1. Go to [polygon.io](https://polygon.io) and create a free account
-2. Navigate to **Dashboard → API Keys**
-3. Copy your key into `server/config.js` as `POLYGON_API_KEY`
+1. Sign in at the [Schwab Developer Portal](https://developer.schwab.com)
+2. Create an app and enable the **Trader API** product
+3. Set the callback URL to `https://127.0.0.1` (matches the default `SCHWAB_REDIRECT_URI`)
+4. Copy the app's **Client ID (App Key)** and **Client Secret** into `server/.env`:
 
-**Free tier limitations:** 5 API calls/minute, 2-year historical data. For active trading use, the Starter plan ($29/mo) removes rate limits and enables WebSocket streaming.
+```env
+SCHWAB_CLIENT_ID=your_schwab_app_key
+SCHWAB_CLIENT_SECRET=your_schwab_app_secret
+```
 
-### Google Gemini API (AI Features)
+### 2. Run the one-time OAuth script
 
-Used for: stock analysis, earnings previews, pre-market reports, news sentiment scoring, note summarization.
+```bash
+cd server && node schwab-auth.js
+```
 
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Sign in with your Google account
-3. Click **Create API Key**
-4. Copy your key into `server/config.js` as `GEMINI_API_KEY`
+The script prints an authorize URL. Open it, log in, and approve access. You'll be redirected to `https://127.0.0.1?code=...` (the browser may show a connection error — that's expected). Copy the **full** redirect URL and paste it back into the prompt. The script exchanges the code and writes the tokens into `server/.env`.
 
-**Free tier:** 15 requests/minute, 1 million tokens/day — sufficient for personal use.
+### 3. Token lifecycle
+
+| Token | Lifetime | Refresh |
+|---|---|---|
+| Access token | ~30 minutes | Auto-refreshed by the server (`services/schwab.js`) |
+| Refresh token | 7 days | Re-run `node schwab-auth.js` when it expires |
+
+> **AI is fully local — no API key required.** All AI features call an [Ollama](https://ollama.com) instance (default `http://localhost:11434`, model `gemma4:e4b`). Start it with `ollama serve` and `ollama pull gemma4:e4b`. Voice-note transcription additionally uses the local Whisper CLI.
 
 ---
 
@@ -267,10 +279,12 @@ StockAnalyzerWeb/
 └── server/                       # Express backend
     ├── index.js                  # Server entry, all API routes, cache logic
     ├── package.json              # Server dependencies
-    ├── config.js                 # API keys (create this — not committed)
+    ├── config.js                 # Loads .env, warns if Schwab creds missing
+    ├── schwab-auth.js            # One-time Schwab OAuth setup script
+    ├── .env                      # Schwab credentials + tokens (not committed)
     ├── scrapers/                 # Playwright + fetch scrapers
     │   ├── browser.js            # Shared Playwright browser instance
-    │   ├── gapScanner.js         # Polygon-based gap scan
+    │   ├── gapScanner.js         # Schwab-based gap scan
     │   ├── watchlistScanner.js   # Full technical scan (RSI, MACD, BBands, SMAs)
     │   ├── watchlistPrices.js    # Live price fetching
     │   ├── finvizQuote.js        # Fundamentals scraper
@@ -287,8 +301,8 @@ StockAnalyzerWeb/
     │   ├── themePerformance.js   # Sector/theme performance
     │   └── substackFeed.js       # Substack RSS/scraper
     ├── services/
-    │   ├── polygon.js            # Polygon.io API client (paginated)
-    │   ├── whisperService.js     # Gemini API client + Whisper transcription
+    │   ├── schwab.js             # Schwab API client + token auto-refresh
+    │   ├── whisperService.js     # Ollama client + local Whisper transcription
     │   └── alertMonitor.js       # Background price alert checker
     ├── routes/
     │   └── notes.js              # Trading notes CRUD + AI endpoints
@@ -351,7 +365,7 @@ StockAnalyzerWeb/
 | `GET` | `/api/finviz-quote` | `?ticker=NVDA` | Fundamentals, price, sector, industry |
 | `GET` | `/api/finviz-peers` | `?tickers=NVDA,AMD` | Peer comparison data |
 | `GET` | `/api/sma` | `?ticker=NVDA` | SMA 20/50/200 from Yahoo Finance |
-| `GET` | `/api/earnings-preview` | `?ticker=NVDA` | AI-generated earnings briefing via Gemini |
+| `GET` | `/api/earnings-preview` | `?ticker=NVDA` | AI-generated earnings briefing (local LLM) |
 
 ### News
 
@@ -370,7 +384,7 @@ StockAnalyzerWeb/
 | `PATCH` | `/api/alerts/:id` | `{ enabled, price, ... }` | Update alert (enable/disable, change price) |
 | `DELETE` | `/api/alerts/:id` | — | Delete an alert |
 
-### AI (Gemini)
+### AI (local LLM)
 
 | Method | Endpoint | Body | Description |
 |---|---|---|---|
@@ -400,20 +414,26 @@ StockAnalyzerWeb/
 
 ## Configuration
 
-Copy `.env.example` to `.env` (this file is not committed) and fill in your keys:
+Configuration lives in `server/.env` (not committed). The Schwab credentials are the only required values — everything else has sane defaults.
 
 | Variable | Required | Description |
 |---|---|---|
-| `POLYGON_API_KEY` | Yes | Polygon.io API key for real-time market data |
-| `GEMINI_API_KEY` | Yes | Google Gemini API key for all AI features |
+| `SCHWAB_CLIENT_ID` | Yes | Schwab app Client ID (App Key) |
+| `SCHWAB_CLIENT_SECRET` | Yes | Schwab app Client Secret |
+| `SCHWAB_ACCESS_TOKEN` | Auto | Written by `schwab-auth.js`; auto-refreshed by the server |
+| `SCHWAB_REFRESH_TOKEN` | Auto | Written by `schwab-auth.js`; valid 7 days |
+| `SCHWAB_REDIRECT_URI` | No | OAuth callback URL (default: `https://127.0.0.1`) |
+| `OLLAMA_URL` | No | Ollama endpoint (default: `http://localhost:11434`) |
+| `OLLAMA_MODEL` | No | Ollama model (default: `gemma4:e4b`) |
 | `PORT` | No | Server port (default: `3001`) |
 | `NODE_ENV` | No | Set to `production` for Docker/deployed use |
 | `BROWSER_PROFILE_DIR` | No | Custom Playwright browser profile path |
 
 ```env
-# .env
-POLYGON_API_KEY=your_polygon_api_key
-GEMINI_API_KEY=your_gemini_api_key
+# server/.env
+SCHWAB_CLIENT_ID=your_schwab_app_key
+SCHWAB_CLIENT_SECRET=your_schwab_app_secret
+# SCHWAB_ACCESS_TOKEN / SCHWAB_REFRESH_TOKEN are added by schwab-auth.js
 PORT=3001
 ```
 
@@ -435,7 +455,7 @@ The parallel file at `src/data/watchlist.js` controls the frontend sidebar displ
 
 ### Alert Monitor Schedule
 
-The alert monitor (`server/services/alertMonitor.js`) only polls during US market hours (9:30am–4:00pm ET, Monday–Friday) to conserve Polygon.io API quota.
+The alert monitor (`server/services/alertMonitor.js`) only polls during US market hours (9:30am–4:00pm ET, Monday–Friday) to limit Schwab API traffic.
 
 ---
 

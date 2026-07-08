@@ -7,9 +7,6 @@ async function fetchJson(url) {
 }
 
 export const ApiService = {
-  getNews: () =>
-    fetchJson(`${API_BASE}/news`),
-
   getSMAs: (ticker) =>
     fetchJson(`${API_BASE}/sma?ticker=${encodeURIComponent(ticker)}`),
 

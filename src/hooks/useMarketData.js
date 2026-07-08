@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ApiService } from '../services/ApiService';
 
 export function useMarketData(ticker, enabled = false) {
-  const [news, setNews] = useState(null);
   const [stockNews, setStockNews] = useState(null);
   const [tickerInfo, setTickerInfo] = useState(null);
   const [smaData, setSmaData] = useState(null);
@@ -10,7 +9,6 @@ export function useMarketData(ticker, enabled = false) {
   const [watchlistScan, setWatchlistScan] = useState(null);
   const [loadingBriefing, setLoadingBriefing] = useState(true);
   const [loadingScan, setLoadingScan] = useState(true);
-  const [loadingMarketNews, setLoadingMarketNews] = useState(true);
   const [loading, setLoading] = useState(false);
   const [loadingNews, setLoadingNews] = useState(false);
   const [errors, setErrors] = useState({});
@@ -69,30 +67,6 @@ export function useMarketData(ticker, enabled = false) {
     if (enabled) fetchAll();
   }, [fetchAll, enabled]);
 
-  // Fetch market news + AI sentiment on mount — never re-runs
-  useEffect(() => {
-    setLoadingMarketNews(true);
-    ApiService.getNews()
-      .then(newsData => {
-        if (!mountedRef.current) return;
-        setNews(newsData);
-        if (newsData?.articles?.length > 0) {
-          const headlines = newsData.articles.map(a => a.summary || a.title).filter(Boolean);
-          ApiService.getNewsSentiment(headlines)
-            .then(({ scores }) => {
-              if (!mountedRef.current || !scores?.length) return;
-              setNews({ ...newsData, articles: newsData.articles.map((a, i) => {
-                const s = scores.find(sc => sc.index === i);
-                return s ? { ...a, sentiment: s.sentiment, sentimentScore: s.score } : a;
-              })});
-            })
-            .catch(() => {});
-        }
-      })
-      .catch(err => { if (mountedRef.current) setErrors(e => ({ ...e, news: err.message })); })
-      .finally(() => { if (mountedRef.current) setLoadingMarketNews(false); });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
     setLoadingBriefing(true);
     ApiService.getMarketBriefing()
@@ -119,7 +93,6 @@ export function useMarketData(ticker, enabled = false) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
-    news,
     stockNews,
     tickerInfo,
     smaData,
@@ -127,7 +100,6 @@ export function useMarketData(ticker, enabled = false) {
     watchlistScan,
     loadingBriefing,
     loadingScan,
-    loadingMarketNews,
     loading,
     loadingNews,
     errors,

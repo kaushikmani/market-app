@@ -8,7 +8,6 @@ import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '.env') });
-import { scrapeNews } from './scrapers/news.js';
 import { fetchSMAs } from './scrapers/yahooSMA.js';
 import { scrapeGoogleNews } from './scrapers/googleNews.js';
 import { scrapeXPosts, getXFeed } from './scrapers/xNews.js';
@@ -168,24 +167,6 @@ app.get('/api/credentials/status', (req, res) => {
 // ── Watchlist — single source of truth served from server/data/watchlist.js ──
 app.get('/api/watchlist', (req, res) => {
   res.json({ success: true, watchlist: WATCHLIST });
-});
-
-// News — 10-minute in-memory cache + disk cache for cold starts
-let newsCache = { data: loadDiskCache('news'), expiry: 0 };
-
-app.get('/api/news', async (req, res) => {
-  const now = Date.now();
-  if (newsCache.data && now < newsCache.expiry) return res.json(newsCache.data);
-  const disk = newsCache.data;
-  if (disk) res.json(disk);
-  try {
-    const data = await scrapeNews();
-    newsCache = { data, expiry: now + 10 * 60 * 1000 };
-    if (data?.success && data.articles?.length > 0) saveDiskCache('news', data);
-    if (!disk) res.json(data);
-  } catch (error) {
-    if (!disk) res.status(500).json({ error: error.message });
-  }
 });
 
 
@@ -353,7 +334,7 @@ app.get('/api/theme-performance', async (req, res) => {
   } catch (error) {
     const isAuth = error.message?.includes('401') || error.message?.includes('API Key');
     res.status(isAuth ? 503 : 500).json({
-      error: isAuth ? 'Market data unavailable: POLYGON_API_KEY not configured' : error.message,
+      error: isAuth ? 'Market data unavailable: Schwab authentication required — run node schwab-auth.js' : error.message,
     });
   }
 });
@@ -569,7 +550,7 @@ app.get('/api/gap-scanner', async (req, res) => {
     if (!disk) {
       const isAuth = error.message?.includes('401') || error.message?.includes('API Key');
       res.status(isAuth ? 503 : 500).json({
-        error: isAuth ? 'Market data unavailable: POLYGON_API_KEY not configured' : error.message,
+        error: isAuth ? 'Market data unavailable: Schwab authentication required — run node schwab-auth.js' : error.message,
       });
     }
   }
@@ -855,14 +836,6 @@ function startBackgroundRefresh() {
   setTimeout(warmXFeed, 30_000);
 
   // Non-browser tasks run in parallel, staggered slightly to avoid burst
-  setTimeout(() => refreshData('News', async () => {
-    const data = await scrapeNews();
-    if (data?.success && data.articles?.length > 0) {
-      newsCache = { data, expiry: Date.now() + 10 * 60_000 };
-      saveDiskCache('news', data);
-    }
-  }), 2_000);
-
   setTimeout(() => refreshData('Market Sentiment', async () => {
     const data = await fetchMarketSentiment();
     if (data?.fearGreed?.score != null) saveDiskCache('market-sentiment', data);
@@ -901,14 +874,6 @@ function startBackgroundRefresh() {
   setInterval(() => withBrowserLock('Market Briefing', scrapeMarketBriefing), 14 * 60_000);
   setInterval(() => withBrowserLock('Pre-Market Report', generatePreMarketReport), 9 * 60_000);
   setInterval(() => withBrowserLock('Substack Feed', fetchSubstackFeed), 55 * 60_000);
-
-  setInterval(() => refreshData('News', async () => {
-    const data = await scrapeNews();
-    if (data?.success && data.articles?.length > 0) {
-      newsCache = { data, expiry: Date.now() + 10 * 60_000 };
-      saveDiskCache('news', data);
-    }
-  }), 10 * 60_000);
 
   setInterval(() => refreshData('Market Sentiment', async () => {
     const data = await fetchMarketSentiment();

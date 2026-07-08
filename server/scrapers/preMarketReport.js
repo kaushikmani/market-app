@@ -189,7 +189,7 @@ export async function generatePreMarketReport() {
   // Fetch news in parallel with Yahoo data (news doesn't use Yahoo)
   const newsPromise = scrapeMarketBriefing().catch(() => ({ google: [], x: [] }));
 
-  // Fetch market data (Yahoo for futures/indices) + Polygon for stock gaps
+  // Fetch market data (Yahoo for futures/indices) + Schwab for stock gaps
   let market = {};
   let gaps = { gappingUp: [], gappingDown: [] };
   try {
@@ -198,7 +198,7 @@ export async function generatePreMarketReport() {
     console.error('[PreMarketReport] Yahoo market data error:', e.message);
   }
   try {
-    const polygonGaps = await scanGaps();
+    const gapData = await scanGaps();
     const toGapper = (g) => ({
       ticker: g.ticker,
       change: (g.gapPct >= 0 ? '+' : '') + g.gapPct.toFixed(1) + '%',
@@ -207,12 +207,12 @@ export async function generatePreMarketReport() {
       prevClose: g.prevClose,
     });
     gaps = {
-      gappingUp:   (polygonGaps.gapUps   || []).map(toGapper),
-      gappingDown: (polygonGaps.gapDowns || []).map(toGapper),
+      gappingUp:   (gapData.gapUps   || []).map(toGapper),
+      gappingDown: (gapData.gapDowns || []).map(toGapper),
     };
-    console.log('[PreMarketReport] Polygon gaps:', gaps.gappingUp.length, 'up,', gaps.gappingDown.length, 'down');
+    console.log('[PreMarketReport] Schwab gaps:', gaps.gappingUp.length, 'up,', gaps.gappingDown.length, 'down');
   } catch (e) {
-    console.error('[PreMarketReport] Polygon gap data error:', e.message);
+    console.error('[PreMarketReport] Schwab gap data error:', e.message);
   }
 
   const news = await newsPromise;

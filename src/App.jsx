@@ -180,7 +180,7 @@ function App() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const { news, stockNews, tickerInfo, smaData, marketBriefing, watchlistScan, loadingBriefing, loadingScan, loadingMarketNews, loading, loadingNews, errors } = useMarketData(ticker, activeTab === 'stock');
+  const { stockNews, tickerInfo, smaData, marketBriefing, watchlistScan, loadingBriefing, loadingScan, loading, loadingNews, errors } = useMarketData(ticker, activeTab === 'stock');
   const { prices: tapePrices } = useWatchlistPrices();
   const tapeItems = useMemo(() => {
     return Object.entries(tapePrices || {})
@@ -191,22 +191,21 @@ function App() {
 
   const stock = useMemo(() => buildStockFromTickerInfo(tickerInfo, smaData), [tickerInfo, smaData]);
 
-  // Merge Polygon news + MarketBriefing news into a single sorted feed
+  // News feed sourced from the MarketBriefing scrape, newest first
   const combinedNews = useMemo(() => {
-    const polygonArticles = news?.articles || [];
     const briefingNews = (marketBriefing?.news || []).map(item => ({
       title: item.title,
       url: item.url,
       source: item.source,
       publishedAt: item.time,
     }));
-    const merged = [...polygonArticles, ...briefingNews].sort((a, b) => {
+    const merged = [...briefingNews].sort((a, b) => {
       const ta = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
       const tb = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
       return tb - ta;
     });
     return { articles: merged };
-  }, [news, marketBriefing]);
+  }, [marketBriefing]);
 
   // Earnings preview — fetch when earnings are within 30 days
   const [earningsPreview, setEarningsPreview] = useState(null);
@@ -491,12 +490,12 @@ function App() {
               <EarningsCalendarSection onTickerClick={handleTickerClick} />
             </div>
 
-            {/* ── 8. News (Polygon + X) ── */}
+            {/* ── 8. News (Market Briefing) ── */}
             <div style={{ marginTop: '24px' }}>
-              <SectionDivider title="News" subtitle={loadingMarketNews || loadingBriefing ? 'Loading...' : ''} />
+              <SectionDivider title="News" subtitle={loadingBriefing ? 'Loading...' : ''} />
             </div>
             <div style={{ marginTop: '8px' }}>
-              <NewsSection data={combinedNews} loading={loadingMarketNews && loadingBriefing} error={errors.news} />
+              <NewsSection data={combinedNews} loading={loadingBriefing} error={errors.news} />
             </div>
 
           </div>
