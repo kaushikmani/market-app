@@ -1,44 +1,69 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { ApiService } from '../services/ApiService';
 
-// Returns true if market is currently open (including pre/after hours: 4am–8pm ET Mon-Fri)
+// Single, app-wide subscription. Multiple components calling this hook
+// share one fetch + one interval, instead of fanning out N requests every 60s.
+
+const REFRESH_MS = 60 * 1000;
+
+let cache = { prices: {}, loading: false };
+const listeners = new Set();
+let intervalId = null;
+let refCount = 0;
+let inFlight = null;
+
 function isExtendedHours() {
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const day = et.getDay(); // 0=Sun, 6=Sat
+  const day = et.getDay();
   if (day === 0 || day === 6) return false;
   const h = et.getHours();
-  return h >= 4 && h < 20; // 4am–8pm ET
+  return h >= 4 && h < 20;
+}
+
+function emit() {
+  for (const l of listeners) l();
+}
+
+async function fetchOnce() {
+  if (!isExtendedHours()) return;
+  if (inFlight) return inFlight;
+  cache = { ...cache, loading: true };
+  emit();
+  inFlight = ApiService.getWatchlistPrices()
+    .then(data => {
+      if (data?.prices) cache = { prices: data.prices, loading: false };
+      else cache = { ...cache, loading: false };
+    })
+    .catch(() => { cache = { ...cache, loading: false }; })
+    .finally(() => { inFlight = null; emit(); });
+  return inFlight;
+}
+
+function subscribe(listener) {
+  listeners.add(listener);
+  refCount += 1;
+  if (refCount === 1) {
+    fetchOnce();
+    intervalId = setInterval(fetchOnce, REFRESH_MS);
+  }
+  return () => {
+    listeners.delete(listener);
+    refCount = Math.max(0, refCount - 1);
+    if (refCount === 0 && intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+}
+
+function getSnapshot() {
+  return cache;
 }
 
 export function useWatchlistPrices() {
-  const [prices, setPrices] = useState({});
-  const [loading, setLoading] = useState(false);
-  const intervalRef = useRef(null);
-
-  const fetchPrices = async () => {
-    if (!isExtendedHours()) return;
-    try {
-      setLoading(true);
-      const data = await ApiService.getWatchlistPrices();
-      if (data?.prices) setPrices(data.prices);
-    } catch {
-      // silent fail — sidebar still works without prices
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPrices();
-
-    // Refresh every 60 seconds during extended hours
-    intervalRef.current = setInterval(() => {
-      if (isExtendedHours()) fetchPrices();
-    }, 60 * 1000);
-
-    return () => clearInterval(intervalRef.current);
-  }, []);
-
-  return { prices, loading };
+  const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  // Keep API stable for callers
+  useEffect(() => {}, []);
+  return { prices: snap.prices, loading: snap.loading };
 }

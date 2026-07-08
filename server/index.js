@@ -1035,6 +1035,9 @@ app.get('/api/ticker-info', async (req, res) => {
       low52w:    q.low52w,
       marketCap:         fundamentals.marketCap         ?? null,
       sharesOutstanding: fundamentals.sharesOutstanding ?? null,
+      eps:               fundamentals.eps               ?? null,
+      peRatio:           fundamentals.peRatio           ?? null,
+      dividendYield:     fundamentals.dividendYield     ?? null,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });

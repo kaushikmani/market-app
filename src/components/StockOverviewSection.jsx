@@ -17,6 +17,19 @@ function formatShares(shares) {
   return shares.toLocaleString();
 }
 
+const Stat = ({ label, value, valueColor }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+    <span style={{
+      fontSize: '9px', fontWeight: 700, letterSpacing: '0.06em',
+      textTransform: 'uppercase', color: Theme.colors.tertiaryText,
+    }}>{label}</span>
+    <span className="tabular-nums" style={{
+      fontSize: '13px', fontWeight: 700,
+      color: valueColor || Theme.colors.primaryText,
+    }}>{value}</span>
+  </div>
+);
+
 const LoadingSkeleton = () => (
   <div className="flex flex-col gap-3">
     <div className="flex items-center gap-3">
@@ -116,6 +129,29 @@ export const StockOverviewSection = ({ data, loading, error }) => {
           )}
         </div>
       </div>
+
+      {/* Fundamentals strip — EPS, P/E, Yield */}
+      {(typeof data.eps === 'number' || typeof data.peRatio === 'number' || typeof data.dividendYield === 'number') && (
+        <div className="card" style={{
+          padding: '8px 14px',
+          display: 'flex', alignItems: 'center', gap: '20px',
+          fontFamily: 'var(--font-mono)',
+        }}>
+          {typeof data.eps === 'number' && (
+            <Stat
+              label="EPS (ttm)"
+              value={`${data.eps < 0 ? '-' : ''}$${Math.abs(data.eps).toFixed(2)}`}
+              valueColor={data.eps < 0 ? Theme.colors.bearishRed : Theme.colors.primaryText}
+            />
+          )}
+          {typeof data.peRatio === 'number' && data.peRatio > 0 && (
+            <Stat label="P/E" value={data.peRatio.toFixed(2)} />
+          )}
+          {typeof data.dividendYield === 'number' && data.dividendYield > 0 && (
+            <Stat label="Yield" value={`${data.dividendYield.toFixed(2)}%`} />
+          )}
+        </div>
+      )}
 
       {/* 52W Range card */}
       {(w52High || w52Low) && (

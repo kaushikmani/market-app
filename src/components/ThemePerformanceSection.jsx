@@ -23,19 +23,21 @@ function barColor(changePct) {
 }
 
 // ── Single theme row ─────────────────────────────────────────────────────────
-function ThemeRow({ theme, rank, maxAbsValue, onTickerClick, expanded, onToggle }) {
-  const pct      = theme.changePct;
+function ThemeRow({ theme, rank, maxAbsValue, metricKey, onTickerClick, expanded, onToggle }) {
+  // Pull the active metric (full-day vs since-open), falling back to full-day.
+  const valOf    = (o) => (o[metricKey] != null ? o[metricKey] : o.changePct);
+  const pct      = valOf(theme);
   const positive = pct >= 0;
   const pctColor = positive ? '#00d68f' : '#ff4d4d';
   const barW     = Math.min(Math.abs(pct) / (maxAbsValue || 1) * 100, 100);
   const color    = barColor(pct);
 
-  // Derive top movers from stocks array
-  const sorted   = [...(theme.stocks || [])].sort((a, b) => b.changePct - a.changePct);
-  const winners  = sorted.filter(s => s.changePct > 0).slice(0, 2);
-  const losers   = sorted.filter(s => s.changePct < 0).slice(-1);
+  // Derive top movers from stocks array, ranked by the active metric
+  const sorted   = [...(theme.stocks || [])].sort((a, b) => valOf(b) - valOf(a));
+  const winners  = sorted.filter(s => valOf(s) > 0).slice(0, 2);
+  const losers   = sorted.filter(s => valOf(s) < 0).slice(-1);
   const breadth  = theme.stocks?.length
-    ? Math.round((theme.stocks.filter(s => s.changePct >= 0).length / theme.stocks.length) * 100)
+    ? Math.round((theme.stocks.filter(s => valOf(s) >= 0).length / theme.stocks.length) * 100)
     : 0;
 
   return (
@@ -135,7 +137,8 @@ function ThemeRow({ theme, rank, maxAbsValue, onTickerClick, expanded, onToggle 
             gap: '4px',
           }}>
             {sorted.map(s => {
-              const up = s.changePct >= 0;
+              const sPct = valOf(s);
+              const up = sPct >= 0;
               return (
                 <div
                   key={s.symbol}
@@ -156,7 +159,7 @@ function ThemeRow({ theme, rank, maxAbsValue, onTickerClick, expanded, onToggle 
                     {s.symbol}
                   </span>
                   <span style={{ fontSize: '10px', fontWeight: 600, color: up ? '#00d68f' : '#ff4d4d', fontFamily: 'var(--font-mono)' }}>
-                    {up ? '+' : ''}{s.changePct.toFixed(2)}%
+                    {up ? '+' : ''}{sPct.toFixed(2)}%
                   </span>
                 </div>
               );
@@ -197,6 +200,7 @@ function SkeletonRow() {
 export function ThemePerformanceSection({ onTickerClick }) {
   const [range, setRange]         = useState('today');
   const [filter, setFilter]       = useState('all');
+  const [todayMode, setTodayMode] = useState('full'); // 'full' = incl. gap | 'open' = since open
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
@@ -227,21 +231,24 @@ export function ThemePerformanceSection({ onTickerClick }) {
   }, [range]);
 
   const isToday = range === 'today';
+  // Use the since-open metric only in Today view when that mode is selected.
+  const metricKey = isToday && todayMode === 'open' ? 'changePctOpen' : 'changePct';
 
   const { displayed, maxAbsValue, gainCount, loseCount } = useMemo(() => {
     if (!data?.themes) return { displayed: [], maxAbsValue: 1, gainCount: 0, loseCount: 0 };
 
-    const sorted = [...data.themes].sort((a, b) => b.changePct - a.changePct);
-    const gainCount = sorted.filter(t => t.changePct > 0).length;
-    const loseCount = sorted.filter(t => t.changePct <= 0).length;
+    const valOf  = (t) => (t[metricKey] != null ? t[metricKey] : t.changePct);
+    const sorted = [...data.themes].sort((a, b) => valOf(b) - valOf(a));
+    const gainCount = sorted.filter(t => valOf(t) > 0).length;
+    const loseCount = sorted.filter(t => valOf(t) <= 0).length;
 
     let filtered = sorted;
-    if (filter === 'gaining') filtered = sorted.filter(t => t.changePct > 0);
-    if (filter === 'losing')  filtered = sorted.filter(t => t.changePct <= 0);
+    if (filter === 'gaining') filtered = sorted.filter(t => valOf(t) > 0);
+    if (filter === 'losing')  filtered = sorted.filter(t => valOf(t) <= 0);
 
-    const maxAbs = Math.max(...filtered.map(t => Math.abs(t.changePct)), 1);
+    const maxAbs = Math.max(...filtered.map(t => Math.abs(valOf(t))), 1);
     return { displayed: filtered, maxAbsValue: maxAbs, gainCount, loseCount };
-  }, [data, filter]);
+  }, [data, filter, metricKey]);
 
   const timeStr = updatedAt
     ? updatedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })
@@ -318,6 +325,39 @@ export function ThemePerformanceSection({ onTickerClick }) {
               </button>
             );
           })}
+
+          {/* Today sub-mode: full day (incl. gap) vs since open */}
+          {isToday && (
+            <div style={{ display: 'flex', gap: '3px', marginLeft: '6px', paddingLeft: '6px', borderLeft: `1px solid ${Theme.colors.cardBorder}` }}>
+              {[
+                { key: 'full', label: 'Full Day', title: 'Change from prior close — includes the overnight gap' },
+                { key: 'open', label: 'Since Open', title: 'Intraday move since today’s open — excludes the gap' },
+              ].map(m => {
+                const active = todayMode === m.key;
+                return (
+                  <button
+                    key={m.key}
+                    onClick={() => setTodayMode(m.key)}
+                    title={m.title}
+                    style={{
+                      padding: '3px 9px',
+                      borderRadius: '3px',
+                      fontSize: '10px', fontWeight: 700,
+                      fontFamily: 'monospace',
+                      cursor: 'pointer',
+                      border: `1px solid ${active ? '#3aa0ff' : Theme.colors.cardBorder}`,
+                      background: active ? 'rgba(58,160,255,0.12)' : 'transparent',
+                      color: active ? '#3aa0ff' : Theme.colors.secondaryText,
+                      letterSpacing: '0.04em',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Gaining / Losing filters + stats */}
@@ -395,7 +435,7 @@ export function ThemePerformanceSection({ onTickerClick }) {
             Performance
           </span>
           <span style={{ fontSize: '8px', fontWeight: 700, color: Theme.colors.tertiaryText, letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: 'right' }}>
-            {isToday ? 'Today' : range.toUpperCase()}
+            {isToday ? (todayMode === 'open' ? 'Since Open' : 'Today') : range.toUpperCase()}
           </span>
           <span style={{ fontSize: '8px', fontWeight: 700, color: Theme.colors.tertiaryText, letterSpacing: '0.08em', textTransform: 'uppercase', textAlign: 'center' }}>
             Breadth
@@ -416,6 +456,7 @@ export function ThemePerformanceSection({ onTickerClick }) {
               theme={theme}
               rank={i + 1}
               maxAbsValue={maxAbsValue}
+              metricKey={metricKey}
               onTickerClick={onTickerClick}
               expanded={expandedTheme === theme.name}
               onToggle={() => setExpandedTheme(expandedTheme === theme.name ? null : theme.name)}

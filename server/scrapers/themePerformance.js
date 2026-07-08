@@ -5,7 +5,8 @@ const THEMES = [
   { name: 'Cybersecurity',          tickers: ['CRWD', 'PANW', 'FTNT', 'ZS', 'OKTA', 'S', 'RBRK'] },
   { name: 'Storage & Memory',       tickers: ['MU', 'WDC', 'STX', 'SNDK', 'PSTG'] },
   { name: 'Chip Design & Processors', tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'TSM', 'GFS'] },
-  { name: 'Power Management',         tickers: ['AOSL', 'NVTS', 'VICR', 'POWI', 'ON', 'TXN', 'ADI'] },
+  { name: 'Power Management',         tickers: ['AOSL', 'NVTS', 'VICR', 'POWI', 'ON', 'TXN', 'ADI', 'MCHP', 'MPWR', 'NXPI', 'WOLF'] },
+  { name: 'Power Infrastructure',     tickers: ['ETN', 'GEV', 'PWR', 'VRT'] },
   { name: 'Semiconductor Equipment',  tickers: ['ASML', 'LRCX', 'KLAC', 'AMAT', 'AMKR', 'ICHR', 'FORM', 'CAMT', 'TER'] },
   { name: 'AI & Custom Silicon',    tickers: ['ALAB', 'CRDO', 'INDI', 'SOLS'] },
   { name: 'Optical/Photonics',      tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW', 'CLS'] },
@@ -89,27 +90,40 @@ export async function fetchThemePerformance(range = 'today') {
     }
   }
 
+  const round2 = (n) => Math.round(n * 100) / 100;
+
   const themes = THEMES.map(theme => {
     const stocks = theme.tickers.map(sym => {
       const q = quotes[sym];
       if (!q?.price) return null;
 
       let changePct;
+      // changePctOpen = intraday move since today's open (excludes overnight gap).
+      // Only meaningful for the 'today' range; null otherwise or when open is missing.
+      let changePctOpen = null;
       if (range === 'today') {
         changePct = q.changePct;
         if (changePct == null) return null;
+        if (q.open) changePctOpen = round2(((q.price - q.open) / q.open) * 100);
       } else {
         const startPrice = startPriceMap?.[sym];
         if (!startPrice) return null;
         changePct = ((q.price - startPrice) / startPrice) * 100;
       }
 
-      return { symbol: sym, price: q.price, changePct: Math.round(changePct * 100) / 100 };
+      return { symbol: sym, price: q.price, changePct: round2(changePct), changePctOpen };
     }).filter(Boolean);
 
     if (stocks.length === 0) return null;
     const avg = stocks.reduce((s, st) => s + st.changePct, 0) / stocks.length;
-    return { name: theme.name, changePct: Math.round(avg * 100) / 100, stocks };
+
+    // Average the since-open move across stocks that have an open price.
+    const openStocks = stocks.filter(st => st.changePctOpen != null);
+    const avgOpen = openStocks.length
+      ? round2(openStocks.reduce((s, st) => s + st.changePctOpen, 0) / openStocks.length)
+      : null;
+
+    return { name: theme.name, changePct: round2(avg), changePctOpen: avgOpen, stocks };
   }).filter(Boolean);
 
   const result = { themes, range, updatedAt: new Date().toLocaleTimeString() };

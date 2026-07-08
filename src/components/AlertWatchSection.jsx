@@ -20,7 +20,7 @@ function formatAge(ts) {
   return `${Math.floor(m / 60)}h ago`;
 }
 
-export function AlertWatchSection({ onTickerClick }) {
+export function AlertWatchSection({ onTickerClick, onAddAlert }) {
   const [alerts, setAlerts] = useState(null);
   const [smas, setSmas] = useState({}); // { TICKER: { price (daily close), smas: {8: x, 50: y} } }
   const [quotes, setQuotes] = useState({}); // { TICKER: { price (live), changePct } }
@@ -82,6 +82,19 @@ export function AlertWatchSection({ onTickerClick }) {
       aliveRef.current = false;
       clearInterval(interval);
     };
+  }, [refresh]);
+
+  const handleDelete = useCallback(async (id, ticker) => {
+    if (!id) return;
+    if (!window.confirm(`Remove alert for ${ticker}?`)) return;
+    // Optimistic update
+    setAlerts(prev => (prev ? prev.filter(a => a.id !== id) : prev));
+    try {
+      await ApiService.deleteAlert(id);
+    } catch {
+      // Restore on failure by re-fetching
+      refresh(false);
+    }
   }, [refresh]);
 
   // Tick the "Xs ago" label every 10s so it stays fresh
@@ -163,6 +176,31 @@ export function AlertWatchSection({ onTickerClick }) {
           }}>
             {refreshing ? 'refreshing…' : `updated ${formatAge(lastFetched)}`}
           </span>
+          {onAddAlert && (
+            <button
+              onClick={onAddAlert}
+              title="Add a new alert"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '4px 10px', fontSize: 11, fontWeight: 600,
+                border: '1px solid var(--border-default)', borderRadius: 6,
+                background: 'var(--bg-card)', color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                transition: 'border-color 0.15s var(--tape-e), color 0.15s var(--tape-e)',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = 'var(--tape-acc-line)';
+                e.currentTarget.style.color = 'var(--tape-acc)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'var(--border-default)';
+                e.currentTarget.style.color = 'var(--text-secondary)';
+              }}
+            >
+              + New
+            </button>
+          )}
           <button
             onClick={() => refresh(false)}
             disabled={refreshing}
@@ -206,7 +244,7 @@ export function AlertWatchSection({ onTickerClick }) {
         {/* Header */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '70px 80px 90px 90px 110px 1fr',
+          gridTemplateColumns: '70px 80px 90px 90px 110px 1fr 28px',
           gap: 12,
           padding: '8px 16px',
           background: 'var(--bg-input)',
@@ -218,6 +256,7 @@ export function AlertWatchSection({ onTickerClick }) {
           <span className="label-tape" style={{ textAlign: 'right' }}>SMA</span>
           <span className="label-tape" style={{ textAlign: 'right' }}>From SMA</span>
           <span className="label-tape">Trigger</span>
+          <span />
         </div>
 
         {/* Rows */}
@@ -230,7 +269,7 @@ export function AlertWatchSection({ onTickerClick }) {
               onClick={() => onTickerClick?.(r.ticker)}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '70px 80px 90px 90px 110px 1fr',
+                gridTemplateColumns: '70px 80px 90px 90px 110px 1fr 28px',
                 gap: 12,
                 padding: '10px 16px',
                 borderBottom: i < rows.length - 1 ? '1px solid var(--border-subtle)' : 0,
@@ -278,6 +317,29 @@ export function AlertWatchSection({ onTickerClick }) {
                   <>±{r.threshold}% of {r.period} SMA</>
                 )}
               </span>
+              <button
+                onClick={e => { e.stopPropagation(); handleDelete(r.id, r.ticker); }}
+                title={`Remove ${r.ticker} alert`}
+                style={{
+                  width: 22, height: 22,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'transparent', border: 'none',
+                  color: 'var(--text-tertiary)', cursor: 'pointer',
+                  fontSize: 13, padding: 0, borderRadius: 4,
+                  transition: 'color 0.15s var(--tape-e), background 0.15s var(--tape-e)',
+                  fontFamily: 'inherit',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.color = 'var(--red)';
+                  e.currentTarget.style.background = 'rgba(255, 92, 92, 0.12)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.color = 'var(--text-tertiary)';
+                  e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                ✕
+              </button>
             </div>
           );
         })}

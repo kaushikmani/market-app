@@ -13,15 +13,15 @@ export const WATCHLIST = [
   },
   {
     name: 'Storage & Memory',
-    tickers: ['MU', 'WDC', 'STX', 'SNDK', 'PSTG'],
+    tickers: ['MU', 'WDC', 'STX', 'SNDK', 'PSTG', 'KXIAY'],
   },
   {
     name: 'Chip Design & Processors',
-    tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'AOSL', 'NVTS', 'VICR', 'POWI', 'TSM', 'TSEM', 'GFS'],
+    tickers: ['AMD', 'INTC', 'ARM', 'AVGO', 'MRVL', 'TXN', 'ADI', 'ON', 'AOSL', 'NVTS', 'VICR', 'POWI', 'MCHP', 'MPWR', 'NXPI', 'WOLF', 'UMC', 'TSM', 'TSEM', 'GFS', 'RMBS', 'STM', 'SMTC'],
   },
   {
     name: 'Semiconductor Equipment',
-    tickers: ['ASML', 'LRCX', 'KLAC', 'AMAT', 'AMKR', 'ICHR', 'FORM', 'CAMT', 'TER'],
+    tickers: ['ASML', 'LRCX', 'KLAC', 'AMAT', 'AMKR', 'ICHR', 'FORM', 'CAMT', 'TER', 'SIVEF'],
   },
   {
     name: 'AI & Custom Silicon',
@@ -29,15 +29,19 @@ export const WATCHLIST = [
   },
   {
     name: 'Optical/Photonics',
-    tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW', 'CLS', 'VIAV'],
+    tickers: ['ANET', 'CIEN', 'LITE', 'APH', 'FN', 'POET', 'SKYT', 'AXTI', 'COHR', 'AAOI', 'GLW', 'CLS', 'VIAV', 'IQEPF'],
   },
   {
     name: 'AI Infrastructure & Hardware',
-    tickers: ['SMCI', 'VRT', 'DELL', 'HPE', 'SANM', 'FLEX', 'JBL', 'WYFI', 'AEHR', 'PLAB', 'POWL'],
+    tickers: ['SMCI', 'VRT', 'DELL', 'HPE', 'SANM', 'FLEX', 'JBL', 'WYFI', 'AEHR', 'PLAB', 'POWL', 'PENG'],
+  },
+  {
+    name: 'Power Infrastructure',
+    tickers: ['ETN', 'GEV', 'PWR', 'VRT'],
   },
   {
     name: 'Software & Cloud',
-    tickers: ['PLTR', 'ORCL', 'CRM', 'NOW', 'ADBE', 'TEAM', 'WDAY', 'HUBS', 'MDB', 'MNDY', 'SNOW', 'DDOG', 'NET', 'PATH', 'ZM', 'VEEV', 'ASAN', 'APPN', 'CFLT', 'DOCN', 'DOCU', 'ESTC', 'GTLB', 'TWLO'],
+    tickers: ['PLTR', 'ORCL', 'CRM', 'NOW', 'ADBE', 'TEAM', 'WDAY', 'HUBS', 'MDB', 'MNDY', 'SNOW', 'DDOG', 'NET', 'PATH', 'ZM', 'VEEV', 'ASAN', 'APPN', 'CFLT', 'DOCN', 'DOCU', 'ESTC', 'GTLB', 'TWLO', 'BAND'],
   },
   {
     name: 'Crypto & Blockchain',
@@ -125,7 +129,7 @@ export const WATCHLIST = [
   },
   {
     name: 'Legacy Tech',
-    tickers: ['IBM', 'CSCO'],
+    tickers: ['IBM', 'CSCO', 'NOK'],
   },
   {
     name: 'Meme & Speculative',

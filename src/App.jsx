@@ -1,44 +1,50 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { PriceHeader } from './components/PriceHeader';
-import { IndicatorsSection } from './components/IndicatorsSection';
-import { VolatilityMetrics } from './components/VolatilityMetrics';
-import { MovingAveragesSection } from './components/MovingAveragesSection';
+import React, { useState, useMemo, useRef, useEffect, Suspense, lazy } from 'react';
+// ── Eagerly imported (Overview tab — the default) ──────────────────────────
 import { NewsSection } from './components/NewsSection';
-import { StockNewsSection } from './components/StockNewsSection';
-import { StockOverviewSection } from './components/StockOverviewSection';
-import { SimilarStocksSection } from './components/SimilarStocksSection';
 import { SectionDivider } from './components/SectionDivider';
 import { MarketBriefingSection } from './components/MarketBriefingSection';
-import { PreMarketMoversSection } from './components/PreMarketMoversSection';
 import { GapScannerSection } from './components/GapScannerSection';
 import { TodaysSetupsSection } from './components/TodaysSetupsSection';
 import { PreMarketReportSection } from './components/PreMarketReportSection';
 import { ThemePerformanceSection } from './components/ThemePerformanceSection';
 import { WatchlistSidebar } from './components/WatchlistSidebar';
-import { TradingNotesSection } from './components/TradingNotesSection';
-import { KeyLevelsSection } from './components/KeyLevelsSection';
-import { OptionsSection } from './components/OptionsSection';
-import { OutlookSection } from './components/OutlookSection';
-import { EarningsPreviewSection } from './components/EarningsPreviewSection';
-import { EarningsHistorySection } from './components/EarningsHistorySection';
-import { StockNotesSection } from './components/StockNotesSection';
-import { StockChart } from './components/StockChart';
-import { ChartModal } from './components/ChartModal';
 import { EarningsCalendarSection } from './components/EarningsCalendarSection';
 import { TradingRulesSection } from './components/TradingRulesSection';
 import { MarketNarrativeSection } from './components/MarketNarrativeSection';
 import { MarketSentimentSection } from './components/MarketSentimentSection';
-import { AlertsPanel } from './components/AlertsPanel';
 import { CredentialsStatus } from './components/CredentialsStatus';
-import { JournalSection } from './components/JournalSection';
 import { RightRail } from './components/RightRail';
 import { OverviewHero } from './components/OverviewHero';
 import { AlertWatchSection } from './components/AlertWatchSection';
 import { EarningsWatchSection } from './components/EarningsWatchSection';
-import { TradeLogHero } from './components/TradeLogHero';
-import { OutlookHero } from './components/OutlookHero';
-import { StockHero } from './components/StockHero';
 import { AlertToast } from './components/AlertToast';
+
+// ── Lazy: only loaded when the user opens the Stocks tab ───────────────────
+const PriceHeader            = lazy(() => import('./components/PriceHeader').then(m => ({ default: m.PriceHeader })));
+const IndicatorsSection      = lazy(() => import('./components/IndicatorsSection').then(m => ({ default: m.IndicatorsSection })));
+const VolatilityMetrics      = lazy(() => import('./components/VolatilityMetrics').then(m => ({ default: m.VolatilityMetrics })));
+const MovingAveragesSection  = lazy(() => import('./components/MovingAveragesSection').then(m => ({ default: m.MovingAveragesSection })));
+const StockNewsSection       = lazy(() => import('./components/StockNewsSection').then(m => ({ default: m.StockNewsSection })));
+const StockOverviewSection   = lazy(() => import('./components/StockOverviewSection').then(m => ({ default: m.StockOverviewSection })));
+const SimilarStocksSection   = lazy(() => import('./components/SimilarStocksSection').then(m => ({ default: m.SimilarStocksSection })));
+const KeyLevelsSection       = lazy(() => import('./components/KeyLevelsSection').then(m => ({ default: m.KeyLevelsSection })));
+const OptionsSection         = lazy(() => import('./components/OptionsSection').then(m => ({ default: m.OptionsSection })));
+const EarningsPreviewSection = lazy(() => import('./components/EarningsPreviewSection').then(m => ({ default: m.EarningsPreviewSection })));
+const EarningsHistorySection = lazy(() => import('./components/EarningsHistorySection').then(m => ({ default: m.EarningsHistorySection })));
+const StockNotesSection      = lazy(() => import('./components/StockNotesSection').then(m => ({ default: m.StockNotesSection })));
+const StockChart             = lazy(() => import('./components/StockChart').then(m => ({ default: m.StockChart })));
+const StockHero              = lazy(() => import('./components/StockHero').then(m => ({ default: m.StockHero })));
+
+// ── Lazy: Trade Log / Notes / Outlook tabs ─────────────────────────────────
+const TradingNotesSection = lazy(() => import('./components/TradingNotesSection').then(m => ({ default: m.TradingNotesSection })));
+const OutlookSection      = lazy(() => import('./components/OutlookSection').then(m => ({ default: m.OutlookSection })));
+const JournalSection      = lazy(() => import('./components/JournalSection').then(m => ({ default: m.JournalSection })));
+const TradeLogHero        = lazy(() => import('./components/TradeLogHero').then(m => ({ default: m.TradeLogHero })));
+const OutlookHero         = lazy(() => import('./components/OutlookHero').then(m => ({ default: m.OutlookHero })));
+
+// ── Lazy: dialogs/panels (only when triggered) ─────────────────────────────
+const ChartModal  = lazy(() => import('./components/ChartModal').then(m => ({ default: m.ChartModal })));
+const AlertsPanel = lazy(() => import('./components/AlertsPanel').then(m => ({ default: m.AlertsPanel })));
 import { ApiService } from './services/ApiService';
 import { useMarketData } from './hooks/useMarketData';
 import { useWatchlistPrices } from './hooks/useWatchlistPrices';
@@ -68,7 +74,7 @@ const TODAY_STR = new Date()
   .toUpperCase()
   .replace(/,/g, ' ·');
 
-function TickerTape({ items }) {
+const TickerTape = React.memo(function TickerTape({ items }) {
   if (!items || items.length === 0) return null;
   const doubled = [...items, ...items];
   return (
@@ -104,7 +110,7 @@ function TickerTape({ items }) {
       </div>
     </div>
   );
-}
+});
 
 function parseNum(str) {
   if (!str) return null;
@@ -278,12 +284,20 @@ function App() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: Theme.colors.appBackground }}>
       <AlertToast />
-      <ChartModal
-        ticker={chartModalTicker}
-        onClose={() => setChartModalTicker(null)}
-        onOpenFull={handleTickerClick}
-      />
-      {showAlerts && <AlertsPanel onClose={() => setShowAlerts(false)} />}
+      {chartModalTicker && (
+        <Suspense fallback={null}>
+          <ChartModal
+            ticker={chartModalTicker}
+            onClose={() => setChartModalTicker(null)}
+            onOpenFull={handleTickerClick}
+          />
+        </Suspense>
+      )}
+      {showAlerts && (
+        <Suspense fallback={null}>
+          <AlertsPanel onClose={() => setShowAlerts(false)} />
+        </Suspense>
+      )}
       <WatchlistSidebar activeTicker={ticker} onTickerClick={handleTickerClick} onChartClick={setChartModalTicker} />
 
       <div style={{
@@ -396,7 +410,7 @@ function App() {
             <OverviewHero onPick={handleTickerClick} />
 
             {/* ── Alert watch — live distance to SMA for every active alert ── */}
-            <AlertWatchSection onTickerClick={handleTickerClick} />
+            <AlertWatchSection onTickerClick={handleTickerClick} onAddAlert={() => setShowAlerts(true)} />
 
             {/* ── Earnings watch — next earnings date per alert ticker ── */}
             <EarningsWatchSection onTickerClick={handleTickerClick} />
@@ -492,6 +506,7 @@ function App() {
         {/* STOCK TAB                           */}
         {/* ═══════════════════════════════════ */}
         {activeTab === 'stock' && (
+          <Suspense fallback={<div style={{ padding: 24, color: Theme.colors.secondaryText, fontSize: 12 }}>Loading…</div>}>
           <div ref={stockZoneRef} style={{ padding: '0 20px', marginTop: '12px' }}>
             {/* Stock search bar */}
             <div style={{ padding: '12px 0 16px' }}>
@@ -647,35 +662,42 @@ function App() {
 
             </div>
           </div>
+          </Suspense>
         )}
 
         {/* ═══════════════════════════════════ */}
         {/* TRADE LOG TAB                       */}
         {/* ═══════════════════════════════════ */}
         {activeTab === 'trades' && (
-          <div style={{ padding: '0 20px' }}>
-            <TradeLogHero />
-            <JournalSection />
-          </div>
+          <Suspense fallback={<div style={{ padding: 24, color: Theme.colors.secondaryText, fontSize: 12 }}>Loading…</div>}>
+            <div style={{ padding: '0 20px' }}>
+              <TradeLogHero />
+              <JournalSection />
+            </div>
+          </Suspense>
         )}
 
         {/* ═══════════════════════════════════ */}
         {/* JOURNAL TAB                         */}
         {/* ═══════════════════════════════════ */}
         {activeTab === 'journal' && (
-          <div style={{ padding: '20px 20px 0' }}>
-            <TradingNotesSection onTickerClick={handleTickerClick} />
-          </div>
+          <Suspense fallback={<div style={{ padding: 24, color: Theme.colors.secondaryText, fontSize: 12 }}>Loading…</div>}>
+            <div style={{ padding: '20px 20px 0' }}>
+              <TradingNotesSection onTickerClick={handleTickerClick} />
+            </div>
+          </Suspense>
         )}
 
         {/* ═══════════════════════════════════ */}
         {/* OUTLOOK TAB                         */}
         {/* ═══════════════════════════════════ */}
         {activeTab === 'outlook' && (
-          <div style={{ padding: '0 20px' }}>
-            <OutlookHero />
-            <OutlookSection onTickerClick={handleTickerClick} />
-          </div>
+          <Suspense fallback={<div style={{ padding: 24, color: Theme.colors.secondaryText, fontSize: 12 }}>Loading…</div>}>
+            <div style={{ padding: '0 20px' }}>
+              <OutlookHero />
+              <OutlookSection onTickerClick={handleTickerClick} />
+            </div>
+          </Suspense>
         )}
       </div>
 

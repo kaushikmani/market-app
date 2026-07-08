@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo, useMemo } from 'react';
 import { Theme } from '../models/Theme';
 import { useEditableWatchlist } from '../hooks/useEditableWatchlist';
 import { useWatchlistPrices } from '../hooks/useWatchlistPrices';
@@ -19,6 +19,14 @@ const FLASH_KEYFRAMES = `
   animation: flashDown 0.6s ease-out forwards;
 }
 `;
+
+// Inject keyframes once at module load instead of on every render.
+if (typeof document !== 'undefined' && !document.getElementById('watchlist-flash-keyframes')) {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'watchlist-flash-keyframes';
+  styleEl.textContent = FLASH_KEYFRAMES;
+  document.head.appendChild(styleEl);
+}
 
 const InlineTickerInput = ({ onSubmit, onCancel }) => {
   const [value, setValue] = useState('');
@@ -61,7 +69,7 @@ const InlineTickerInput = ({ onSubmit, onCancel }) => {
   );
 };
 
-const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, isExpanded, onToggle, onAddTicker, onRemoveTicker, onRemoveCategory, onMoveTicker, otherCategories, prices, flashMap, canMoveUp, canMoveDown, onMoveUp, onMoveDown }) => {
+const CategorySectionImpl = ({ category, activeTicker, onTickerClick, onChartClick, isExpanded, onToggle, onAddTicker, onRemoveTicker, onRemoveCategory, onMoveTicker, otherCategories, prices, flashMap, canMoveUp, canMoveDown, onMoveUp, onMoveDown }) => {
   const [hovered, setHovered] = useState(false);
   const [hoveredTicker, setHoveredTicker] = useState(null);
   const [showInput, setShowInput] = useState(false);
@@ -248,6 +256,35 @@ const CategorySection = ({ category, activeTicker, onTickerClick, onChartClick, 
   );
 };
 
+// Re-render only when this category's own tickers' prices/flashes change,
+// or when its identity, expansion, or active-ticker state changes.
+const CategorySection = memo(CategorySectionImpl, (prev, next) => {
+  if (prev.category !== next.category) return false;
+  if (prev.isExpanded !== next.isExpanded) return false;
+  if (prev.activeTicker !== next.activeTicker) return false;
+  if (prev.canMoveUp !== next.canMoveUp || prev.canMoveDown !== next.canMoveDown) return false;
+  if (prev.onTickerClick !== next.onTickerClick || prev.onChartClick !== next.onChartClick) return false;
+  if (prev.onToggle !== next.onToggle) return false;
+
+  // Only fields related to this category's tickers can affect output
+  const tickers = next.category.tickers;
+  for (const t of tickers) {
+    const pa = prev.prices?.[t];
+    const pb = next.prices?.[t];
+    if ((pa?.price ?? null) !== (pb?.price ?? null)) return false;
+    if ((pa?.changePct ?? null) !== (pb?.changePct ?? null)) return false;
+    if ((prev.flashMap?.[t] ?? null) !== (next.flashMap?.[t] ?? null)) return false;
+  }
+
+  // otherCategories shape rarely changes; cheap shallow check by length + name list
+  const oa = prev.otherCategories || [];
+  const ob = next.otherCategories || [];
+  if (oa.length !== ob.length) return false;
+  for (let i = 0; i < oa.length; i++) if (oa[i] !== ob[i]) return false;
+
+  return true;
+});
+
 const NewCategoryInput = ({ onSubmit, onCancel }) => {
   const [value, setValue] = useState('');
   const inputRef = useRef(null);
@@ -340,6 +377,14 @@ export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) 
 
   const totalTickers = watchlist.reduce((sum, cat) => sum + cat.tickers.length, 0);
 
+  // Precompute "other categories" lists once per watchlist change so the
+  // CategorySection memo comparator gets a stable array reference.
+  const otherCategoriesByIdx = useMemo(() => {
+    return watchlist.map((_, i) =>
+      watchlist.filter((_, j) => j !== i).map(c => c.name)
+    );
+  }, [watchlist]);
+
   return (
     <div style={{
       width: '230px',
@@ -408,7 +453,7 @@ export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) 
             onRemoveTicker={(ticker) => removeTicker(cat.name, ticker)}
             onRemoveCategory={() => removeCategory(cat.name)}
             onMoveTicker={(ticker, toCategory) => moveTicker(cat.name, ticker, toCategory)}
-            otherCategories={watchlist.filter((_, j) => j !== i).map(c => c.name)}
+            otherCategories={otherCategoriesByIdx[i]}
             prices={prices}
             flashMap={flashMap}
             canMoveUp={i > 0}
@@ -467,8 +512,6 @@ export const WatchlistSidebar = ({ activeTicker, onTickerClick, onChartClick }) 
           onMouseLeave={e => { e.currentTarget.style.color = Theme.colors.tertiaryText; }}
         >RESET TO DEFAULTS</span>
       </div>
-
-      <style>{FLASH_KEYFRAMES}</style>
     </div>
   );
 };
