@@ -136,3 +136,49 @@ export const WATCHLIST = [
     tickers: ['MEME', 'AMC', 'GME', 'PTON'],
   },
 ];
+
+/** First watchlist group containing ticker, or null if none. */
+export function findWatchlistGroup(ticker) {
+  const current = String(ticker || '').trim().toUpperCase();
+  if (!current) return null;
+  return WATCHLIST.find(group => group.tickers.includes(current)) || null;
+}
+
+function formatChangePct(pct) {
+  if (typeof pct !== 'number' || Number.isNaN(pct)) return '—';
+  const sign = pct > 0 ? '+' : '';
+  return `${sign}${pct.toFixed(2)}%`;
+}
+
+function formatPrice(price) {
+  if (typeof price !== 'number' || Number.isNaN(price)) return '—';
+  return price.toFixed(2);
+}
+
+/**
+ * Build SimilarStocksSection `{ peers }` from the ticker's watchlist group
+ * and already-loaded watchlist prices. Group membership is a same-day
+ * stand-in for industry peers — not sector data. Excludes the current ticker.
+ * Returns null when the ticker is not in any group (empty-state).
+ */
+export function buildWatchlistPeerData(ticker, prices = {}) {
+  const current = String(ticker || '').trim().toUpperCase();
+  const group = findWatchlistGroup(current);
+  if (!group) return null;
+
+  const peers = group.tickers
+    .filter(sym => sym !== current)
+    .map(sym => {
+      const quote = prices[sym];
+      return {
+        ticker: sym,
+        company: '—',
+        marketCap: '—',
+        pe: '—',
+        price: formatPrice(quote?.price),
+        change: formatChangePct(quote?.changePct),
+      };
+    });
+
+  return { peers, groupName: group.name };
+}
