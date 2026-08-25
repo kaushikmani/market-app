@@ -137,11 +137,11 @@ export const WATCHLIST = [
   },
 ];
 
-/** First watchlist group containing ticker, or null if none. */
-export function findWatchlistGroup(ticker) {
+/** All watchlist groups containing ticker — a ticker can belong to more than one. */
+export function findWatchlistGroups(ticker) {
   const current = String(ticker || '').trim().toUpperCase();
-  if (!current) return null;
-  return WATCHLIST.find(group => group.tickers.includes(current)) || null;
+  if (!current) return [];
+  return WATCHLIST.filter(group => group.tickers.includes(current));
 }
 
 function formatChangePct(pct) {
@@ -156,29 +156,36 @@ function formatPrice(price) {
 }
 
 /**
- * Build SimilarStocksSection `{ peers }` from the ticker's watchlist group
- * and already-loaded watchlist prices. Group membership is a same-day
- * stand-in for industry peers — not sector data. Excludes the current ticker.
- * Returns null when the ticker is not in any group (empty-state).
+ * Build SimilarStocksSection `{ peers }` from every watchlist group the
+ * ticker belongs to (merged and de-duplicated — a ticker can be in more than
+ * one group) and already-loaded watchlist prices. Group membership is a
+ * same-day stand-in for industry peers — not sector data. Excludes the
+ * current ticker. Returns null when the ticker is not in any group
+ * (empty-state).
  */
 export function buildWatchlistPeerData(ticker, prices = {}) {
   const current = String(ticker || '').trim().toUpperCase();
-  const group = findWatchlistGroup(current);
-  if (!group) return null;
+  const groups = findWatchlistGroups(current);
+  if (groups.length === 0) return null;
 
-  const peers = group.tickers
-    .filter(sym => sym !== current)
-    .map(sym => {
-      const quote = prices[sym];
-      return {
-        ticker: sym,
-        company: '—',
-        marketCap: '—',
-        pe: '—',
-        price: formatPrice(quote?.price),
-        change: formatChangePct(quote?.changePct),
-      };
-    });
+  const peerSymbols = [...new Set(groups.flatMap(g => g.tickers))]
+    .filter(sym => sym !== current);
 
-  return { peers, groupName: group.name };
+  const peers = peerSymbols.map(sym => {
+    const quote = prices[sym];
+    return {
+      ticker: sym,
+      company: '—',
+      marketCap: '—',
+      pe: '—',
+      price: formatPrice(quote?.price),
+      change: formatChangePct(quote?.changePct),
+    };
+  });
+
+  const groupName = groups.length === 1
+    ? groups[0].name
+    : `${groups[0].name} + ${groups.length - 1} more`;
+
+  return { peers, groupName };
 }
