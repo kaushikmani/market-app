@@ -48,6 +48,7 @@ const AlertsPanel = lazy(() => import('./components/AlertsPanel').then(m => ({ d
 import { ApiService } from './services/ApiService';
 import { useMarketData } from './hooks/useMarketData';
 import { useWatchlistPrices } from './hooks/useWatchlistPrices';
+import { buildWatchlistPeerData } from './data/watchlist';
 import { Theme } from './models/Theme';
 import {
   PriceData,
@@ -188,6 +189,12 @@ function App() {
       .slice(0, 30)
       .map(([sym, v]) => ({ sym, price: v.price, pct: v.changePct ?? 0 }));
   }, [tapePrices]);
+
+  // Watchlist-group stand-in for Peers (not industry/sector data).
+  const watchlistPeerData = useMemo(
+    () => buildWatchlistPeerData(ticker, tapePrices),
+    [ticker, tapePrices],
+  );
 
   const stock = useMemo(() => buildStockFromTickerInfo(tickerInfo, smaData), [tickerInfo, smaData]);
 
@@ -640,9 +647,10 @@ function App() {
 
               <SectionDivider title="Peers" />
               <SimilarStocksSection
-                data={null}
+                data={watchlistPeerData}
                 loading={false}
                 error={null}
+                industry={watchlistPeerData?.groupName || undefined}
                 onTickerClick={handleTickerClick}
               />
 
