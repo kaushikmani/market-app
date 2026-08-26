@@ -20,7 +20,16 @@ const COLUMNS = [
   { key: 'change', label: 'Change', width: '65px', align: 'right' },
 ];
 
-const PeerRow = ({ peer, isLast, onTickerClick }) => {
+const FUNDAMENTAL_KEYS = new Set(['company', 'marketCap', 'pe']);
+
+function columnsFor(data) {
+  if (data?.showFundamentals === false) {
+    return COLUMNS.filter(col => !FUNDAMENTAL_KEYS.has(col.key));
+  }
+  return COLUMNS;
+}
+
+const PeerRow = ({ peer, isLast, onTickerClick, showFundamentals = true }) => {
   const changeStr = peer.change || '';
   const isPositive = changeStr.includes('+') || (!changeStr.startsWith('-') && parseFloat(changeStr) > 0);
   const isNegative = changeStr.startsWith('-');
@@ -50,15 +59,19 @@ const PeerRow = ({ peer, isLast, onTickerClick }) => {
       }}>
         {peer.ticker}
       </div>
-      <div style={{ flex: 1, color: Theme.colors.primaryText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '8px', fontSize: '11px' }}>
-        {peer.company}
-      </div>
-      <div className="tabular-nums" style={{ width: '70px', textAlign: 'right', color: Theme.colors.tertiaryText, fontSize: '11px' }}>
-        {peer.marketCap}
-      </div>
-      <div className="tabular-nums" style={{ width: '55px', textAlign: 'right', color: Theme.colors.tertiaryText, fontSize: '11px' }}>
-        {peer.pe}
-      </div>
+      {showFundamentals && (
+        <>
+          <div style={{ flex: 1, color: Theme.colors.primaryText, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '8px', fontSize: '11px' }}>
+            {peer.company}
+          </div>
+          <div className="tabular-nums" style={{ width: '70px', textAlign: 'right', color: Theme.colors.tertiaryText, fontSize: '11px' }}>
+            {peer.marketCap}
+          </div>
+          <div className="tabular-nums" style={{ width: '55px', textAlign: 'right', color: Theme.colors.tertiaryText, fontSize: '11px' }}>
+            {peer.pe}
+          </div>
+        </>
+      )}
       <div className="tabular-nums" style={{ width: '65px', textAlign: 'right', color: Theme.colors.primaryText, fontWeight: 600, fontSize: '11px' }}>
         {peer.price}
       </div>
@@ -90,6 +103,9 @@ export const SimilarStocksSection = ({ data, loading, error, industry, onTickerC
     );
   }
 
+  const showFundamentals = data.showFundamentals !== false;
+  const columns = columnsFor(data);
+
   return (
     <div className="flex flex-col gap-3">
       {industry && (
@@ -106,7 +122,7 @@ export const SimilarStocksSection = ({ data, loading, error, industry, onTickerC
           background: Theme.colors.surfaceSubtle,
           borderBottom: `1px solid ${Theme.colors.cardBorder}`,
         }}>
-          {COLUMNS.map(col => (
+          {columns.map(col => (
             <div key={col.key} style={{
               width: col.width,
               flex: col.flex,
@@ -123,7 +139,13 @@ export const SimilarStocksSection = ({ data, loading, error, industry, onTickerC
         </div>
 
         {data.peers.map((peer, i) => (
-          <PeerRow key={peer.ticker || i} peer={peer} isLast={i === data.peers.length - 1} onTickerClick={onTickerClick} />
+          <PeerRow
+            key={peer.ticker || i}
+            peer={peer}
+            isLast={i === data.peers.length - 1}
+            onTickerClick={onTickerClick}
+            showFundamentals={showFundamentals}
+          />
         ))}
       </div>
     </div>
