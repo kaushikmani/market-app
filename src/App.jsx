@@ -35,14 +35,14 @@ const StockNotesSection      = lazy(() => import('./components/StockNotesSection
 const StockChart             = lazy(() => import('./components/StockChart').then(m => ({ default: m.StockChart })));
 const StockHero              = lazy(() => import('./components/StockHero').then(m => ({ default: m.StockHero })));
 
-// ── Lazy: Trade Log / Notes / Outlook tabs ─────────────────────────────
+// ── Lazy: Trade Log / Notes / Outlook tabs ─────────────────────────
 const TradingNotesSection = lazy(() => import('./components/TradingNotesSection').then(m => ({ default: m.TradingNotesSection })));
 const OutlookSection      = lazy(() => import('./components/OutlookSection').then(m => ({ default: m.OutlookSection })));
 const JournalSection      = lazy(() => import('./components/JournalSection').then(m => ({ default: m.JournalSection })));
 const TradeLogHero        = lazy(() => import('./components/TradeLogHero').then(m => ({ default: m.TradeLogHero })));
 const OutlookHero         = lazy(() => import('./components/OutlookHero').then(m => ({ default: m.OutlookHero })));
 
-// ── Lazy: dialogs/panels (only when triggered) ─────────────────────────────
+// ── Lazy: dialogs/panels (only when triggered) ─────────────────────────
 const ChartModal  = lazy(() => import('./components/ChartModal').then(m => ({ default: m.ChartModal })));
 const AlertsPanel = lazy(() => import('./components/AlertsPanel').then(m => ({ default: m.AlertsPanel })));
 import { ApiService } from './services/ApiService';
@@ -122,6 +122,14 @@ function parseNum(str) {
 
 function sessionPrice(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+// Same calendar-day math as EarningsWatchSection — keep in sync.
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const target = new Date(dateStr + 'T12:00:00').setHours(0, 0, 0, 0);
+  const now = new Date().setHours(0, 0, 0, 0);
+  return Math.round((target - now) / 86400000);
 }
 
 // Schwab's quote snapshot sources open/high/low/close independently, so a
@@ -243,7 +251,25 @@ function App() {
   const [earningsPreviewLoading, setEarningsPreviewLoading] = useState(false);
   const [earningsPreviewError, setEarningsPreviewError] = useState(null);
 
-  const earningsDaysAway = null;
+  // Pair days with ticker so a stale 0–30 window cannot fetch preview for the next name.
+  const [earningsLookahead, setEarningsLookahead] = useState({ ticker: null, days: null });
+  const earningsDaysAway = earningsLookahead.ticker === ticker ? earningsLookahead.days : null;
+
+  // Lookahead only on Stocks so Overview cannot kick off /api/earnings-preview (Ollama).
+  useEffect(() => {
+    if (!ticker || activeTab !== 'stock') return undefined;
+    let cancelled = false;
+    ApiService.getEarningsLookahead([ticker])
+      .then(resp => {
+        if (cancelled) return;
+        const key = String(ticker).trim().toUpperCase();
+        setEarningsLookahead({ ticker, days: daysUntil(resp?.data?.[key]?.date) });
+      })
+      .catch(() => {
+        if (!cancelled) setEarningsLookahead({ ticker, days: null });
+      });
+    return () => { cancelled = true; };
+  }, [ticker, activeTab]);
 
   useEffect(() => {
     if (!ticker || earningsDaysAway === null || earningsDaysAway < 0 || earningsDaysAway > 30) {
