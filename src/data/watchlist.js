@@ -175,9 +175,6 @@ export function buildWatchlistPeerData(ticker, prices = {}) {
     const quote = prices[sym];
     return {
       ticker: sym,
-      company: '—',
-      marketCap: '—',
-      pe: '—',
       price: formatPrice(quote?.price),
       change: formatChangePct(quote?.changePct),
     };
@@ -187,5 +184,6 @@ export function buildWatchlistPeerData(ticker, prices = {}) {
     ? groups[0].name
     : `${groups[0].name} + ${groups.length - 1} more`;
 
-  return { peers, groupName };
+  // Watchlist peers have price/change only — no invented company/cap/pe.
+  return { peers, groupName, showFundamentals: false };
 }
