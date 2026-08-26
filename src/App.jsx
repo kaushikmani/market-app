@@ -124,18 +124,34 @@ function sessionPrice(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
+// Schwab's quote snapshot sources open/high/low/close independently, so a
+// momentarily stale high/low can lag behind a fast open/close print. Widen
+// high/low to cover any reported value rather than trusting them verbatim —
+// never narrows them, so a real range is never clipped.
+function normalizeOHLC(open, high, low, close) {
+  const known = [open, high, low, close].filter(v => v != null);
+  if (known.length === 0) return { open, high, low, close };
+  return {
+    open,
+    high: high != null ? Math.max(high, ...known) : high,
+    low: low != null ? Math.min(low, ...known) : low,
+    close,
+  };
+}
+
 function buildStockFromTickerInfo(tickerInfo, smaData) {
   const price = tickerInfo?.price || smaData?.price;
   if (!price) return null;
 
   // Real session OHLC from Schwab via /api/ticker-info. Do not invent from
   // prevClose+last — that labeled prior close as Open and swapped High/Close on down days.
-  const priceData = new PriceData(
+  const ohlc = normalizeOHLC(
     sessionPrice(tickerInfo?.open),
     sessionPrice(tickerInfo?.high),
     sessionPrice(tickerInfo?.low),
     sessionPrice(price),
   );
+  const priceData = new PriceData(ohlc.open, ohlc.high, ohlc.low, ohlc.close);
 
   const rsiVal = smaData?.rsi != null ? smaData.rsi : 50;
   const rsi = new RSIIndicator(rsiVal, 14);

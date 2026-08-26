@@ -32,10 +32,12 @@ export class PriceData {
   }
 
   get isPositiveDay() {
+    if (this.close == null || this.open == null) return null;
     return this.close > this.open;
   }
 
   get changePercent() {
+    if (this.close == null || this.open == null) return null;
     return ((this.close - this.open) / this.open) * 100;
   }
 }
