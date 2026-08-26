@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENV_PATH   = path.join(__dirname, '../.env');
 const BASE       = 'https://api.schwabapi.com';
 
-// ── .env helpers ─────────────────────────────────────────────────────────────
+// ── .env helpers ─────────────────────────────────────────────
 
 function updateEnv(key, value) {
   try {
@@ -21,7 +21,7 @@ function updateEnv(key, value) {
   }
 }
 
-// ── Token management ─────────────────────────────────────────────────────────
+// ── Token management ─────────────────────────────────────────
 
 function readEnvValue(key) {
   try {
@@ -83,7 +83,7 @@ async function getAccessToken() {
   return refreshAccessToken();
 }
 
-// ── Core request helper ───────────────────────────────────────────────────────
+// ── Core request helper ───────────────────────────────────────────
 
 export async function schwabGet(path, params = {}) {
   const token = await getAccessToken();
@@ -104,7 +104,7 @@ export async function schwabGet(path, params = {}) {
 }
 
 // ── Quotes: fetch multiple tickers in one call ────────────────────────────────
-// Returns { AAPL: { price, changePct, change, bid, ask, volume, open, prevClose,
+// Returns { AAPL: { price, changePct, change, bid, ask, volume, open, high, low, prevClose,
 //                   high52w, low52w, preMarketChangePct, postMarketChangePct,
 //                   marketCap (if fields includes 'fundamental') }, ... }
 //
@@ -131,6 +131,8 @@ export async function getQuotes(tickers, fields = 'quote') {
         ask:                 q.askPrice                    ?? null,
         volume:              q.totalVolume                 ?? null,
         open:                q.openPrice                   ?? null,
+        high:                q.highPrice                   ?? null,
+        low:                 q.lowPrice                    ?? null,
         prevClose:           q.closePrice                  ?? null, // Schwab closePrice = prev day close
         high52w:             q['52WeekHigh']               ?? null,
         low52w:              q['52WeekLow']                ?? null,
@@ -169,7 +171,7 @@ export async function getInstrumentFundamentals(ticker) {
   };
 }
 
-// ── Price history: daily candles ──────────────────────────────────────────────
+// ── Price history: daily candles ──────────────────────────────────────────
 // Returns array of { t (ms timestamp), o, h, l, c, v } sorted oldest → newest
 
 export async function getPriceHistory(ticker, { days = 400, startDate, endDate } = {}) {
@@ -196,7 +198,7 @@ export async function getPriceHistory(ticker, { days = 400, startDate, endDate }
   }));
 }
 
-// ── Options chain summary ─────────────────────────────────────────────────────
+// ── Options chain summary ─────────────────────────────────────
 // Returns: { iv, callOI, putOI, callVolume, putVolume, putCallRatio, success }
 
 export async function getOptionsChain(ticker) {
@@ -249,7 +251,7 @@ export async function getOptionsChain(ticker) {
   };
 }
 
-// ── Market movers ─────────────────────────────────────────────────────────────
+// ── Market movers ───────────────────────────────────────────
 // index: '$SPX' | '$COMPX' | '$DJI'
 // direction: 'up' | 'down'
 
@@ -259,7 +261,7 @@ export async function getMovers(index, direction = 'up') {
   return data.screeners || [];
 }
 
-// ── Market hours ──────────────────────────────────────────────────────────────
+// ── Market hours ────────────────────────────────────────────
 
 export async function getMarketStatus() {
   const data = await schwabGet('/markets', { markets: 'equity' });

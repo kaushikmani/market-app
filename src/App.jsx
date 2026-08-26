@@ -35,7 +35,7 @@ const StockNotesSection      = lazy(() => import('./components/StockNotesSection
 const StockChart             = lazy(() => import('./components/StockChart').then(m => ({ default: m.StockChart })));
 const StockHero              = lazy(() => import('./components/StockHero').then(m => ({ default: m.StockHero })));
 
-// ── Lazy: Trade Log / Notes / Outlook tabs ─────────────────────────────────
+// ── Lazy: Trade Log / Notes / Outlook tabs ─────────────────────────────
 const TradingNotesSection = lazy(() => import('./components/TradingNotesSection').then(m => ({ default: m.TradingNotesSection })));
 const OutlookSection      = lazy(() => import('./components/OutlookSection').then(m => ({ default: m.OutlookSection })));
 const JournalSection      = lazy(() => import('./components/JournalSection').then(m => ({ default: m.JournalSection })));
@@ -120,14 +120,38 @@ function parseNum(str) {
   return isNaN(num) ? null : num;
 }
 
+function sessionPrice(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+// Schwab's quote snapshot sources open/high/low/close independently, so a
+// momentarily stale high/low can lag behind a fast open/close print. Widen
+// high/low to cover any reported value rather than trusting them verbatim —
+// never narrows them, so a real range is never clipped.
+function normalizeOHLC(open, high, low, close) {
+  const known = [open, high, low, close].filter(v => v != null);
+  if (known.length === 0) return { open, high, low, close };
+  return {
+    open,
+    high: high != null ? Math.max(high, ...known) : high,
+    low: low != null ? Math.min(low, ...known) : low,
+    close,
+  };
+}
+
 function buildStockFromTickerInfo(tickerInfo, smaData) {
   const price = tickerInfo?.price || smaData?.price;
   if (!price) return null;
 
-  const change = typeof tickerInfo?.change === 'number' ? tickerInfo.change : 0;
-  const prevClose = price - change;
-
-  const priceData = new PriceData(prevClose, price, Math.min(prevClose, price), Math.max(prevClose, price));
+  // Real session OHLC from Schwab via /api/ticker-info. Do not invent from
+  // prevClose+last — that labeled prior close as Open and swapped High/Close on down days.
+  const ohlc = normalizeOHLC(
+    sessionPrice(tickerInfo?.open),
+    sessionPrice(tickerInfo?.high),
+    sessionPrice(tickerInfo?.low),
+    sessionPrice(price),
+  );
+  const priceData = new PriceData(ohlc.open, ohlc.high, ohlc.low, ohlc.close);
 
   const rsiVal = smaData?.rsi != null ? smaData.rsi : 50;
   const rsi = new RSIIndicator(rsiVal, 14);
